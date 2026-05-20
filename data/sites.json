@@ -1,0 +1,98 @@
+[
+  {
+    "id": "site_001",
+    "name": "代码仓库",
+    "url": "https://github.com",
+    "category": "",
+    "icon": "💻",
+    "description": "GitLab / GitHub 项目入口，快速查看代码与合并请求。",
+    "glow": "rgba(96,165,250,.45)",
+    "sort": 1,
+    "createdAt": "2026-05-20T10:00:00+08:00",
+    "updatedAt": "2026-05-20T17:18:52+08:00"
+  },
+  {
+    "id": "site_002",
+    "name": "发布平台",
+    "url": "https://example.com/deploy",
+    "category": "运维",
+    "icon": "🚀",
+    "description": "应用构建、部署、版本记录与生产发布流程。",
+    "glow": "rgba(34,211,238,.45)",
+    "sort": 2,
+    "createdAt": "2026-05-20T10:00:00+08:00",
+    "updatedAt": "2026-05-20T10:00:00+08:00"
+  },
+  {
+    "id": "site_003",
+    "name": "监控大盘",
+    "url": "https://example.com/monitor",
+    "category": "运维",
+    "icon": "📊",
+    "description": "服务可用性、接口耗时、服务器资源与告警中心。",
+    "glow": "rgba(168,85,247,.45)",
+    "sort": 3,
+    "createdAt": "2026-05-20T10:00:00+08:00",
+    "updatedAt": "2026-05-20T10:00:00+08:00"
+  },
+  {
+    "id": "site_004",
+    "name": "知识库",
+    "url": "https://example.com/docs",
+    "category": "文档",
+    "icon": "🧠",
+    "description": "项目文档、接口规范、部署手册和常见问题沉淀。",
+    "glow": "rgba(244,114,182,.45)",
+    "sort": 4,
+    "createdAt": "2026-05-20T10:00:00+08:00",
+    "updatedAt": "2026-05-20T10:00:00+08:00"
+  },
+  {
+    "id": "site_005",
+    "name": "数据库",
+    "url": "https://example.com/database",
+    "category": "",
+    "icon": "🗄️",
+    "description": "PostgreSQL、Redis、MongoDB 等数据服务管理入口。",
+    "glow": "rgba(52,211,153,.45)",
+    "sort": 5,
+    "createdAt": "2026-05-20T10:00:00+08:00",
+    "updatedAt": "2026-05-20T17:18:52+08:00"
+  },
+  {
+    "id": "site_006",
+    "name": "工具箱",
+    "url": "https://example.com/tools",
+    "category": "效率",
+    "icon": "🧰",
+    "description": "JSON 格式化、时间戳转换、编码解码、正则测试。",
+    "glow": "rgba(251,191,36,.45)",
+    "sort": 6,
+    "createdAt": "2026-05-20T10:00:00+08:00",
+    "updatedAt": "2026-05-20T10:00:00+08:00"
+  },
+  {
+    "id": "site_007",
+    "name": "设计资源",
+    "url": "https://example.com/design",
+    "category": "设计",
+    "icon": "🎨",
+    "description": "图标、配色、组件库、原型稿与视觉规范集合。",
+    "glow": "rgba(129,140,248,.45)",
+    "sort": 7,
+    "createdAt": "2026-05-20T10:00:00+08:00",
+    "updatedAt": "2026-05-20T10:00:00+08:00"
+  },
+  {
+    "id": "site_008",
+    "name": "任务看板",
+    "url": "https://example.com/tasks",
+    "category": "效率",
+    "icon": "✅",
+    "description": "需求排期、缺陷跟踪、迭代进度与个人待办事项。",
+    "glow": "rgba(45,212,191,.45)",
+    "sort": 8,
+    "createdAt": "2026-05-20T10:00:00+08:00",
+    "updatedAt": "2026-05-20T10:00:00+08:00"
+  }
+]
