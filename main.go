@@ -1,6 +1,7 @@
 package main
 
 import (
+	"embed"
 	"fmt"
 	"log"
 	"net/http"
@@ -10,6 +11,9 @@ import (
 	"navigation/internal/storage"
 	httptransport "navigation/internal/transport/http"
 )
+
+//go:embed index.html
+var staticFiles embed.FS
 
 func main() {
 	cfg := config.ParseFlags()
@@ -21,7 +25,7 @@ func main() {
 	defer store.Close()
 
 	svc := service.NewSiteService(store)
-	handler := httptransport.NewHandler(svc)
+	handler := httptransport.NewHandler(svc, staticFiles)
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
 	log.Printf("导航站已启动: http://localhost%s", addr)

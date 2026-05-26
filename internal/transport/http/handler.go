@@ -3,6 +3,7 @@ package httptransport
 import (
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"net/http"
 	"net/url"
 	"strings"
@@ -13,10 +14,11 @@ import (
 
 type Handler struct {
 	service *service.SiteService
+	static  fs.FS
 }
 
-func NewHandler(service *service.SiteService) *Handler {
-	return &Handler{service: service}
+func NewHandler(service *service.SiteService, static fs.FS) *Handler {
+	return &Handler{service: service, static: static}
 }
 
 func (h *Handler) Routes() http.Handler {
@@ -27,16 +29,16 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("/api/categories/", h.handleCategoryByName)
 	mux.HandleFunc("/api/category-stats", h.handleCategoryStats)
 	mux.HandleFunc("/api/stats", h.handleStats)
-	mux.HandleFunc("/", serveIndex)
+	mux.HandleFunc("/", h.serveIndex)
 	return mux
 }
 
-func serveIndex(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) serveIndex(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" && r.URL.Path != "/index.html" {
 		http.NotFound(w, r)
 		return
 	}
-	http.ServeFile(w, r, "index.html")
+	http.ServeFileFS(w, r, h.static, "index.html")
 }
 
 func (h *Handler) handleSites(w http.ResponseWriter, r *http.Request) {
