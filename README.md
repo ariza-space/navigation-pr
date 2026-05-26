@@ -43,6 +43,12 @@ go run . -port 8080 -data data
 ```text
 http://localhost:8080
 ```
+默认初始密码: admin admin
+
+重置密码: 
+```bash
+bin/navigation -data data -reset-auth
+```
 
 参数说明：
 
