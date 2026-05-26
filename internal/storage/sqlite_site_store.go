@@ -61,6 +61,17 @@ func (s *SQLiteSiteStore) ensureDatabase() error {
 		);
 		CREATE INDEX IF NOT EXISTS idx_sites_sort_name ON sites(sort, name);
 		CREATE INDEX IF NOT EXISTS idx_sites_category ON sites(category);
+		CREATE TABLE IF NOT EXISTS users (
+			id INTEGER PRIMARY KEY CHECK (id = 1),
+			username TEXT NOT NULL,
+			password_hash TEXT NOT NULL,
+			password_salt TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		);
+		CREATE TABLE IF NOT EXISTS settings (
+			key TEXT PRIMARY KEY,
+			value TEXT NOT NULL
+		);
 	`); err != nil {
 		db.Close()
 		return err
@@ -68,6 +79,83 @@ func (s *SQLiteSiteStore) ensureDatabase() error {
 
 	s.db = db
 	return s.importLegacyJSONIfNeeded()
+}
+
+// GetUser 读取唯一管理员账号。
+func (s *SQLiteSiteStore) GetUser() (domain.User, error) {
+	var user domain.User
+	err := s.db.QueryRow("SELECT username, password_hash, password_salt FROM users WHERE id = 1").Scan(&user.Username, &user.PasswordHash, &user.PasswordSalt)
+	return user, err
+}
+
+// SaveUser 覆盖唯一管理员账号。
+func (s *SQLiteSiteStore) SaveUser(user domain.User) error {
+	_, err := s.db.Exec(`
+		INSERT INTO users (id, username, password_hash, password_salt, updated_at)
+		VALUES (1, ?, ?, ?, datetime('now'))
+		ON CONFLICT(id) DO UPDATE SET
+			username = excluded.username,
+			password_hash = excluded.password_hash,
+			password_salt = excluded.password_salt,
+			updated_at = excluded.updated_at
+	`, user.Username, user.PasswordHash, user.PasswordSalt)
+	return err
+}
+
+// GetSettings 读取站点显示设置。
+func (s *SQLiteSiteStore) GetSettings() (domain.AppSettings, error) {
+	rows, err := s.db.Query("SELECT key, value FROM settings")
+	if err != nil {
+		return domain.AppSettings{}, err
+	}
+	defer rows.Close()
+
+	settings := domain.AppSettings{}
+	for rows.Next() {
+		var key, value string
+		if err := rows.Scan(&key, &value); err != nil {
+			return domain.AppSettings{}, err
+		}
+		switch key {
+		case "siteTitle":
+			settings.SiteTitle = value
+		case "badge":
+			settings.Badge = value
+		case "subtitle":
+			settings.Subtitle = value
+		case "heroTitle":
+			settings.HeroTitle = value
+		}
+	}
+	return settings, rows.Err()
+}
+
+// SaveSettings 保存站点显示设置。
+func (s *SQLiteSiteStore) SaveSettings(settings domain.AppSettings) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	values := map[string]string{
+		"siteTitle": settings.SiteTitle,
+		"badge":     settings.Badge,
+		"subtitle":  settings.Subtitle,
+		"heroTitle": settings.HeroTitle,
+	}
+	for key, value := range values {
+		if _, err := stmt.Exec(key, value); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func (s *SQLiteSiteStore) importLegacyJSONIfNeeded() error {

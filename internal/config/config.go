@@ -20,12 +20,14 @@ type Config struct {
 	DataDir        string
 	DataPath       string
 	LegacyJSONPath string
+	ResetAuth      bool
 }
 
 // ParseFlags 解析命令行参数，并生成 SQLite 与旧 JSON 数据文件路径。
 func ParseFlags() Config {
 	port := flag.Int("port", defaultPort, "HTTP server port")
 	dataDir := flag.String("data", defaultDataDir, "directory for SQLite data file")
+	resetAuth := flag.Bool("reset-auth", false, "reset username and password to admin/admin, then exit")
 	flag.Parse()
 
 	if *port < 1 || *port > 65535 {
@@ -43,5 +45,6 @@ func ParseFlags() Config {
 		DataDir:        cleanDataDir,
 		DataPath:       filepath.Join(cleanDataDir, dataFileName),
 		LegacyJSONPath: filepath.Join(cleanDataDir, legacyJSONFileName),
+		ResetAuth:      *resetAuth,
 	}
 }

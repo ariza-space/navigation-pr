@@ -26,9 +26,16 @@
       pointer-events: none;
     }
     .wrap { width: min(1180px, calc(100% - 40px)); margin: 0 auto; padding: 56px 0 70px; position: relative; }
+    .topbar { display:flex; justify-content:flex-end; margin-bottom:24px; position:relative; z-index:5; }
+    .user-menu { position:relative; }
+    .user-btn { height:42px; display:flex; align-items:center; gap:9px; padding:0 14px; border-radius:999px; border:1px solid rgba(255,255,255,.14); color:#dce9ff; background:rgba(255,255,255,.08); cursor:pointer; backdrop-filter:blur(16px); }
+    .user-dropdown { position:absolute; right:0; top:calc(100% + 10px); display:none; min-width:170px; padding:8px; border-radius:16px; border:1px solid rgba(255,255,255,.14); background:rgba(8,15,30,.96); box-shadow:0 18px 44px rgba(0,0,0,.38); }
+    .user-dropdown.open { display:block; }
+    .menu-item { width:100%; display:block; padding:10px 11px; border:0; border-radius:12px; color:#dce9ff; background:transparent; text-align:left; cursor:pointer; }
+    .menu-item:hover { background:rgba(255,255,255,.08); color:#fff; }
     .hero { display: grid; grid-template-columns: 1.2fr .8fr; gap: 26px; align-items: center; margin-bottom: 34px; }
     .badge { display:inline-flex; align-items:center; gap:8px; padding: 9px 14px; border:1px solid rgba(255,255,255,.14); border-radius:999px; background:rgba(255,255,255,.08); backdrop-filter: blur(16px); color:#b9d8ff; font-size:14px; }
-    .badge span { width:8px; height:8px; border-radius:50%; background:#22d3ee; box-shadow:0 0 18px #22d3ee; }
+    .badge-dot { width:8px; height:8px; border-radius:50%; background:#22d3ee; box-shadow:0 0 18px #22d3ee; flex:0 0 auto; }
     h1 { font-size: clamp(38px, 6vw, 76px); line-height: 1.02; letter-spacing: -3px; margin: 20px 0 16px; }
     h1 strong { background: linear-gradient(90deg,#93c5fd,#c084fc,#f9a8d4); -webkit-background-clip:text; color:transparent; }
     .sub { color:#9fb3cf; font-size:17px; line-height:1.8; max-width: 650px; }
@@ -112,17 +119,33 @@
     .category-row { display:flex; align-items:center; justify-content:space-between; gap:14px; padding:13px 14px; border-radius:16px; border:1px solid rgba(255,255,255,.11); background:rgba(255,255,255,.055); }
     .category-info b { display:block; margin-bottom:3px; }
     .category-info small { color:#8ea4c4; }
+    .auth-screen { position:fixed; inset:0; display:grid; place-items:center; padding:24px; background:rgba(2,6,23,.86); backdrop-filter:blur(16px); z-index:30; }
+    .auth-screen.hidden { display:none; }
+    .auth-card { width:min(430px,100%); padding:28px; border-radius:28px; border:1px solid rgba(255,255,255,.14); background:rgba(11,20,36,.94); box-shadow:0 30px 90px rgba(0,0,0,.46); }
+    .auth-card h2 { font-size:28px; margin-bottom:8px; }
+    .auth-card p { color:#9fb3cf; line-height:1.7; margin-bottom:20px; }
+    .auth-form { display:flex; flex-direction:column; gap:14px; }
     @media (max-width: 950px){ .hero{grid-template-columns:1fr;} .grid{grid-template-columns:repeat(2,1fr);} }
     @media (max-width: 560px){ .wrap{width:min(100% - 24px,1180px); padding-top:28px;} .grid{grid-template-columns:1fr;} .stats{grid-template-columns:1fr;} h1{letter-spacing:-1px;} .section-title{align-items:flex-start; gap:12px; flex-direction:column;} .form-grid{grid-template-columns:1fr;} .card-actions{opacity:1;} }
   </style>
 </head>
 <body>
   <main class="wrap">
+    <div class="topbar">
+      <div class="user-menu" id="userMenu">
+        <button class="user-btn" id="userMenuBtn" type="button"><span id="currentUsername">admin</span> ▾</button>
+        <div class="user-dropdown" id="userDropdown">
+          <button class="menu-item" id="openSettingsBtn" type="button">设置</button>
+          <button class="menu-item" id="openAccountBtn" type="button">修改账号密码</button>
+          <button class="menu-item" id="logoutBtn" type="button">退出登录</button>
+        </div>
+      </div>
+    </div>
     <section class="hero">
       <div>
-        <div class="badge"><span></span> DEV PORTAL / 个人导航站</div>
-        <h1><strong>常用站点导航</strong></h1>
-        <p class="sub">聚合了常用网站</p>
+        <div class="badge"><span class="badge-dot"></span> <span id="heroBadge">DEV PORTAL / 个人导航站</span></div>
+        <h1><strong id="heroTitle">常用站点导航</strong></h1>
+        <p class="sub" id="heroSubtitle">聚合了常用网站</p>
       </div>
       <div class="panel">
         <div class="search">🔎 <input id="searchInput" placeholder="搜索工具、文档、服务..." /></div>
@@ -148,6 +171,25 @@
     <section class="grid" id="siteGrid">
     </section>
   </main>
+
+  <div class="auth-screen" id="authScreen">
+    <div class="auth-card">
+      <h2>登录导航站</h2>
+      <p>请输入管理员账号密码。默认账号密码为 admin / admin。</p>
+      <form class="auth-form" id="loginForm">
+        <div class="field">
+          <label for="loginUsername">账号</label>
+          <input id="loginUsername" name="username" autocomplete="username" required />
+        </div>
+        <div class="field">
+          <label for="loginPassword">密码</label>
+          <input id="loginPassword" name="password" type="password" autocomplete="current-password" required />
+        </div>
+        <div class="error" id="loginError"></div>
+        <button class="primary-btn" type="submit">登录</button>
+      </form>
+    </div>
+  </div>
 
   <div class="dialog-backdrop" id="siteDialog" aria-hidden="true">
     <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialogTitle">
@@ -230,6 +272,68 @@
     </div>
   </div>
 
+  <div class="dialog-backdrop" id="accountDialog" aria-hidden="true">
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="accountDialogTitle">
+      <div class="dialog-head">
+        <h2 id="accountDialogTitle">修改账号密码</h2>
+        <button class="close-btn" id="closeAccountDialogBtn" type="button">×</button>
+      </div>
+      <form id="accountForm">
+        <div class="form-grid">
+          <div class="field full">
+            <label for="accountUsername">账号</label>
+            <input id="accountUsername" required />
+          </div>
+          <div class="field full">
+            <label for="currentPassword">当前密码</label>
+            <input id="currentPassword" type="password" autocomplete="current-password" required />
+          </div>
+          <div class="field full">
+            <label for="newPassword">新密码</label>
+            <input id="newPassword" type="password" autocomplete="new-password" placeholder="留空则只修改账号" />
+          </div>
+        </div>
+        <div class="form-actions">
+          <div class="error" id="accountError"></div>
+          <button class="primary-btn" type="submit">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="dialog-backdrop" id="settingsDialog" aria-hidden="true">
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="settingsDialogTitle">
+      <div class="dialog-head">
+        <h2 id="settingsDialogTitle">页面设置</h2>
+        <button class="close-btn" id="closeSettingsDialogBtn" type="button">×</button>
+      </div>
+      <form id="settingsForm">
+        <div class="form-grid">
+          <div class="field full">
+            <label for="siteTitleInput">浏览器标题</label>
+            <input id="siteTitleInput" required />
+          </div>
+          <div class="field full">
+            <label for="badgeInput">Badge 文案</label>
+            <input id="badgeInput" required />
+          </div>
+          <div class="field full">
+            <label for="heroTitleInput">H1 标题</label>
+            <input id="heroTitleInput" required />
+          </div>
+          <div class="field full">
+            <label for="subtitleInput">Sub 文案</label>
+            <textarea id="subtitleInput" required></textarea>
+          </div>
+        </div>
+        <div class="form-actions">
+          <div class="error" id="settingsError"></div>
+          <button class="primary-btn" type="submit">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <script>
     const emojiOptions = [
       '🔗', '🌐', '🏠', '⭐', '📌', '🔍', '💻', '🖥️', '⌨️', '🧑‍💻',
@@ -254,7 +358,9 @@
       sites: [],
       categories: [],
       category: '全部',
-      query: ''
+      query: '',
+      user: null,
+      settings: null
     };
 
     const els = {
@@ -285,18 +391,83 @@
       glowPicker: document.querySelector('#glowPicker'),
       categoryDialog: document.querySelector('#categoryDialog'),
       closeCategoryDialogBtn: document.querySelector('#closeCategoryDialogBtn'),
-      categoryList: document.querySelector('#categoryList')
+      categoryList: document.querySelector('#categoryList'),
+      authScreen: document.querySelector('#authScreen'),
+      loginForm: document.querySelector('#loginForm'),
+      loginError: document.querySelector('#loginError'),
+      currentUsername: document.querySelector('#currentUsername'),
+      userMenu: document.querySelector('#userMenu'),
+      userMenuBtn: document.querySelector('#userMenuBtn'),
+      userDropdown: document.querySelector('#userDropdown'),
+      logoutBtn: document.querySelector('#logoutBtn'),
+      openAccountBtn: document.querySelector('#openAccountBtn'),
+      accountDialog: document.querySelector('#accountDialog'),
+      closeAccountDialogBtn: document.querySelector('#closeAccountDialogBtn'),
+      accountForm: document.querySelector('#accountForm'),
+      accountError: document.querySelector('#accountError'),
+      openSettingsBtn: document.querySelector('#openSettingsBtn'),
+      settingsDialog: document.querySelector('#settingsDialog'),
+      closeSettingsDialogBtn: document.querySelector('#closeSettingsDialogBtn'),
+      settingsForm: document.querySelector('#settingsForm'),
+      settingsError: document.querySelector('#settingsError'),
+      heroBadge: document.querySelector('#heroBadge'),
+      heroTitle: document.querySelector('#heroTitle'),
+      heroSubtitle: document.querySelector('#heroSubtitle')
     };
 
     async function requestJSON(url, options = {}) {
       const response = await fetch(url, {
+        credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         ...options
       });
       if (response.status === 204) return null;
       const data = await response.json();
+      if (response.status === 401) showLogin();
       if (!response.ok) throw new Error(data.error || '请求失败');
       return data;
+    }
+
+    function showLogin() {
+      state.user = null;
+      els.authScreen.classList.remove('hidden');
+      document.querySelector('#loginPassword').value = '';
+      document.querySelector('#loginUsername').focus();
+    }
+
+    function hideLogin(user) {
+      state.user = user;
+      els.currentUsername.textContent = user.username;
+      document.querySelector('#accountUsername').value = user.username;
+      els.authScreen.classList.add('hidden');
+    }
+
+    async function bootstrap() {
+      try {
+        const user = await requestJSON('/api/session');
+        hideLogin(user);
+        await loadAll();
+      } catch (error) {
+        showLogin();
+      }
+    }
+
+    async function login(event) {
+      event.preventDefault();
+      els.loginError.textContent = '';
+      try {
+        const user = await requestJSON('/api/login', {
+          method: 'POST',
+          body: JSON.stringify({
+            username: document.querySelector('#loginUsername').value,
+            password: document.querySelector('#loginPassword').value
+          })
+        });
+        hideLogin(user);
+        await loadAll();
+      } catch (error) {
+        els.loginError.textContent = error.message;
+      }
     }
 
     function siteQueryURL() {
@@ -308,17 +479,31 @@
     }
 
     async function loadAll() {
-      const [categories, sites, stats] = await Promise.all([
+      const [categories, sites, stats, settings] = await Promise.all([
         requestJSON('/api/categories'),
         requestJSON(siteQueryURL()),
-        requestJSON('/api/stats')
+        requestJSON('/api/stats'),
+        requestJSON('/api/settings')
       ]);
       state.sites = sites;
       state.categories = categories;
+      state.settings = settings;
+      applySettings(settings);
       renderTabs(categories);
       renderCategoryOptions(categories);
       renderSites(sites);
       renderStats(stats);
+    }
+
+    function applySettings(settings) {
+      document.title = settings.siteTitle;
+      els.heroBadge.textContent = settings.badge;
+      els.heroTitle.textContent = settings.heroTitle;
+      els.heroSubtitle.textContent = settings.subtitle;
+      document.querySelector('#siteTitleInput').value = settings.siteTitle;
+      document.querySelector('#badgeInput').value = settings.badge;
+      document.querySelector('#heroTitleInput').value = settings.heroTitle;
+      document.querySelector('#subtitleInput').value = settings.subtitle;
     }
 
     async function loadSitesOnly() {
@@ -521,6 +706,34 @@
       els.categoryDialog.setAttribute('aria-hidden', 'true');
     }
 
+    function openAccountDialog() {
+      els.accountError.textContent = '';
+      document.querySelector('#accountUsername').value = state.user?.username || '';
+      document.querySelector('#currentPassword').value = '';
+      document.querySelector('#newPassword').value = '';
+      els.accountDialog.classList.add('open');
+      els.accountDialog.setAttribute('aria-hidden', 'false');
+      els.userDropdown.classList.remove('open');
+    }
+
+    function closeAccountDialog() {
+      els.accountDialog.classList.remove('open');
+      els.accountDialog.setAttribute('aria-hidden', 'true');
+    }
+
+    function openSettingsDialog() {
+      els.settingsError.textContent = '';
+      if (state.settings) applySettings(state.settings);
+      els.settingsDialog.classList.add('open');
+      els.settingsDialog.setAttribute('aria-hidden', 'false');
+      els.userDropdown.classList.remove('open');
+    }
+
+    function closeSettingsDialog() {
+      els.settingsDialog.classList.remove('open');
+      els.settingsDialog.setAttribute('aria-hidden', 'true');
+    }
+
     function renderCategoryManager(categories) {
       els.categoryList.innerHTML = '';
       if (!categories.length) {
@@ -591,6 +804,52 @@
       }
     }
 
+    async function saveAccount(event) {
+      event.preventDefault();
+      els.accountError.textContent = '';
+      try {
+        const user = await requestJSON('/api/account', {
+          method: 'PUT',
+          body: JSON.stringify({
+            username: document.querySelector('#accountUsername').value,
+            currentPassword: document.querySelector('#currentPassword').value,
+            newPassword: document.querySelector('#newPassword').value
+          })
+        });
+        hideLogin(user);
+        closeAccountDialog();
+      } catch (error) {
+        els.accountError.textContent = error.message;
+      }
+    }
+
+    async function saveSettings(event) {
+      event.preventDefault();
+      els.settingsError.textContent = '';
+      try {
+        const settings = await requestJSON('/api/settings', {
+          method: 'PUT',
+          body: JSON.stringify({
+            siteTitle: document.querySelector('#siteTitleInput').value,
+            badge: document.querySelector('#badgeInput').value,
+            heroTitle: document.querySelector('#heroTitleInput').value,
+            subtitle: document.querySelector('#subtitleInput').value
+          })
+        });
+        state.settings = settings;
+        applySettings(settings);
+        closeSettingsDialog();
+      } catch (error) {
+        els.settingsError.textContent = error.message;
+      }
+    }
+
+    async function logout() {
+      await requestJSON('/api/logout', { method: 'POST' }).catch(() => null);
+      els.userDropdown.classList.remove('open');
+      showLogin();
+    }
+
     function debounce(fn, delay = 250) {
       let timer = null;
       return (...args) => {
@@ -616,6 +875,15 @@
     els.addBtn.addEventListener('click', () => openDialog());
     els.emojiSelectBtn.addEventListener('click', openEmojiDialog);
     els.manageCategoriesBtn.addEventListener('click', openCategoryDialog);
+    els.loginForm.addEventListener('submit', login);
+    els.userMenuBtn.addEventListener('click', () => els.userDropdown.classList.toggle('open'));
+    els.openAccountBtn.addEventListener('click', openAccountDialog);
+    els.openSettingsBtn.addEventListener('click', openSettingsDialog);
+    els.logoutBtn.addEventListener('click', logout);
+    els.closeAccountDialogBtn.addEventListener('click', closeAccountDialog);
+    els.closeSettingsDialogBtn.addEventListener('click', closeSettingsDialog);
+    els.accountForm.addEventListener('submit', saveAccount);
+    els.settingsForm.addEventListener('submit', saveSettings);
     els.closeBtn.addEventListener('click', closeDialog);
     els.cancelBtn.addEventListener('click', closeDialog);
     els.closeEmojiDialogBtn.addEventListener('click', closeEmojiDialog);
@@ -629,12 +897,19 @@
     els.categoryDialog.addEventListener('click', event => {
       if (event.target === els.categoryDialog) closeCategoryDialog();
     });
+    els.accountDialog.addEventListener('click', event => {
+      if (event.target === els.accountDialog) closeAccountDialog();
+    });
+    els.settingsDialog.addEventListener('click', event => {
+      if (event.target === els.settingsDialog) closeSettingsDialog();
+    });
     document.addEventListener('click', event => {
       if (!event.target.closest('#categoryPicker')) hideCategoryMenu();
+      if (!event.target.closest('#userMenu')) els.userDropdown.classList.remove('open');
     });
     els.form.addEventListener('submit', saveSite);
 
-    loadAll().catch(error => {
+    bootstrap().catch(error => {
       els.grid.innerHTML = `<div class="empty">${error.message}</div>`;
     });
   </script>

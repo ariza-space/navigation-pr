@@ -26,3 +26,18 @@ type CategoryStat struct {
 	Name  string `json:"name"`
 	Count int    `json:"count"`
 }
+
+// User 保存单用户账号信息。
+type User struct {
+	Username     string `json:"username"`
+	PasswordHash string `json:"-"`
+	PasswordSalt string `json:"-"`
+}
+
+// AppSettings 保存首页可配置文案。
+type AppSettings struct {
+	SiteTitle string `json:"siteTitle"`
+	Badge     string `json:"badge"`
+	Subtitle  string `json:"subtitle"`
+	HeroTitle string `json:"heroTitle"`
+}

@@ -15,25 +15,47 @@ import (
 // Handler 负责 HTTP 路由、请求解析和响应编码。
 type Handler struct {
 	service *service.SiteService
+	auth    *service.AuthService
 	static  fs.FS
 }
 
 // NewHandler 创建 HTTP 处理器。
-func NewHandler(service *service.SiteService, static fs.FS) *Handler {
-	return &Handler{service: service, static: static}
+func NewHandler(service *service.SiteService, auth *service.AuthService, static fs.FS) *Handler {
+	return &Handler{service: service, auth: auth, static: static}
 }
 
 // Routes 注册页面和 API 路由。
 func (h *Handler) Routes() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/sites", h.handleSites)
-	mux.HandleFunc("/api/sites/", h.handleSiteByID)
-	mux.HandleFunc("/api/categories", h.handleCategories)
-	mux.HandleFunc("/api/categories/", h.handleCategoryByName)
-	mux.HandleFunc("/api/category-stats", h.handleCategoryStats)
-	mux.HandleFunc("/api/stats", h.handleStats)
+	mux.HandleFunc("/api/login", h.handleLogin)
+	mux.HandleFunc("/api/session", h.handleSession)
+	mux.HandleFunc("/api/logout", h.requireAuth(h.handleLogout))
+	mux.HandleFunc("/api/account", h.requireAuth(h.handleAccount))
+	mux.HandleFunc("/api/settings", h.requireAuth(h.handleSettings))
+	mux.HandleFunc("/api/sites", h.requireAuth(h.handleSites))
+	mux.HandleFunc("/api/sites/", h.requireAuth(h.handleSiteByID))
+	mux.HandleFunc("/api/categories", h.requireAuth(h.handleCategories))
+	mux.HandleFunc("/api/categories/", h.requireAuth(h.handleCategoryByName))
+	mux.HandleFunc("/api/category-stats", h.requireAuth(h.handleCategoryStats))
+	mux.HandleFunc("/api/stats", h.requireAuth(h.handleStats))
 	mux.HandleFunc("/", h.serveIndex)
 	return mux
+}
+
+func (h *Handler) requireAuth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		cookie, err := r.Cookie("navigation_session")
+		if err != nil || cookie.Value == "" {
+			writeError(w, http.StatusUnauthorized, "请先登录")
+			return
+		}
+		if _, ok := h.auth.UserBySession(cookie.Value); !ok {
+			clearSessionCookie(w)
+			writeError(w, http.StatusUnauthorized, "登录已失效")
+			return
+		}
+		next(w, r)
+	}
 }
 
 func (h *Handler) serveIndex(w http.ResponseWriter, r *http.Request) {
@@ -42,6 +64,107 @@ func (h *Handler) serveIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.ServeFileFS(w, r, h.static, "index.html")
+}
+
+func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "不支持的请求方法")
+		return
+	}
+	var input struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeError(w, http.StatusBadRequest, "请求数据格式不正确")
+		return
+	}
+	token, user, err := h.auth.Login(input.Username, input.Password)
+	if err != nil {
+		h.writeServiceError(w, err, "账号不存在")
+		return
+	}
+	setSessionCookie(w, token)
+	writeJSON(w, http.StatusOK, map[string]string{"username": user.Username})
+}
+
+func (h *Handler) handleSession(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "不支持的请求方法")
+		return
+	}
+	cookie, err := r.Cookie("navigation_session")
+	if err != nil || cookie.Value == "" {
+		writeError(w, http.StatusUnauthorized, "请先登录")
+		return
+	}
+	user, ok := h.auth.UserBySession(cookie.Value)
+	if !ok {
+		clearSessionCookie(w)
+		writeError(w, http.StatusUnauthorized, "登录已失效")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"username": user.Username})
+}
+
+func (h *Handler) handleLogout(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "不支持的请求方法")
+		return
+	}
+	if cookie, err := r.Cookie("navigation_session"); err == nil {
+		h.auth.Logout(cookie.Value)
+	}
+	clearSessionCookie(w)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) handleAccount(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		writeError(w, http.StatusMethodNotAllowed, "不支持的请求方法")
+		return
+	}
+	var input struct {
+		Username        string `json:"username"`
+		CurrentPassword string `json:"currentPassword"`
+		NewPassword     string `json:"newPassword"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeError(w, http.StatusBadRequest, "请求数据格式不正确")
+		return
+	}
+	user, err := h.auth.UpdateAccount(input.Username, input.CurrentPassword, input.NewPassword)
+	if err != nil {
+		h.writeServiceError(w, err, "账号不存在")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"username": user.Username})
+}
+
+func (h *Handler) handleSettings(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		settings, err := h.auth.Settings()
+		if err != nil {
+			h.writeServiceError(w, err, "没有找到设置")
+			return
+		}
+		writeJSON(w, http.StatusOK, settings)
+	case http.MethodPut:
+		var input domain.AppSettings
+		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+			writeError(w, http.StatusBadRequest, "请求数据格式不正确")
+			return
+		}
+		settings, err := h.auth.UpdateSettings(input)
+		if err != nil {
+			h.writeServiceError(w, err, "没有找到设置")
+			return
+		}
+		writeJSON(w, http.StatusOK, settings)
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "不支持的请求方法")
+	}
 }
 
 func (h *Handler) handleSites(w http.ResponseWriter, r *http.Request) {
@@ -208,4 +331,26 @@ func (h *Handler) writeServiceError(w http.ResponseWriter, err error, notFoundMe
 		return
 	}
 	writeError(w, http.StatusInternalServerError, "保存站点数据失败")
+}
+
+func setSessionCookie(w http.ResponseWriter, token string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     "navigation_session",
+		Value:    token,
+		Path:     "/",
+		MaxAge:   86400,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+func clearSessionCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     "navigation_session",
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
 }
