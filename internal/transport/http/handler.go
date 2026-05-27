@@ -21,6 +21,9 @@ type Handler struct {
 
 // NewHandler 创建 HTTP 处理器。
 func NewHandler(service *service.SiteService, auth *service.AuthService, static fs.FS) *Handler {
+	if distFS, err := fs.Sub(static, "web/dist"); err == nil {
+		static = distFS
+	}
 	return &Handler{service: service, auth: auth, static: static}
 }
 
@@ -38,7 +41,7 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("/api/categories/", h.requireAuth(h.handleCategoryByName))
 	mux.HandleFunc("/api/category-stats", h.handleCategoryStats)
 	mux.HandleFunc("/api/stats", h.handleStats)
-	mux.Handle("/static/", http.FileServerFS(h.static))
+	mux.Handle("/assets/", http.FileServerFS(h.static))
 	mux.HandleFunc("/", h.serveIndex)
 	return mux
 }

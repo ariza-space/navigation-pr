@@ -1,6 +1,6 @@
 # navigation
 
-一个轻量级个人导航/书签站。后端使用 Go 1.22 提供 HTTP API，数据存储在 SQLite 中，前端由 `index.html` 和 `static/` 静态资源提供，并通过 Go embed 打包进二进制。
+一个轻量级个人导航/书签站。后端使用 Go 1.22 提供 HTTP API，数据存储在 SQLite 中，前端使用 Vue 3、Vite、TypeScript、Tailwind CSS 组织源码，并通过 Go embed 打包 `web/dist` 构建产物进二进制。
 
 ## 功能
 
@@ -16,15 +16,16 @@
 
 - Go 1.22
 - SQLite，驱动为 `github.com/mattn/go-sqlite3`
-- 原生 HTML/CSS/JavaScript 前端
+- Vue 3、Vite、TypeScript
+- Tailwind CSS、shadcn-vue 风格基础组件、lucide-vue-next 图标
 
 ## 项目结构
 
 ```text
 .
 ├── main.go                         # 程序入口，初始化配置、存储、服务和 HTTP 路由
-├── index.html                      # 前端入口页面
-├── static/                         # 前端 CSS 和 JavaScript 静态资源
+├── frontend/                       # Vue 3 前端源码
+├── web/dist/                       # Vite 构建产物，供 Go embed 使用
 ├── internal/config                 # 命令行参数和运行配置
 ├── internal/domain                 # 领域模型
 ├── internal/service                # 站点、分类、账号、会话和设置业务逻辑
@@ -37,7 +38,28 @@
 
 ## 本地运行
 
+首次开发前安装前端依赖：
+
 ```bash
+cd frontend && npm install
+```
+
+开发时建议分别启动后端 API 和 Vite 前端：
+
+```bash
+go run . -port 8080 -data data
+```
+
+```bash
+cd frontend && npm run dev
+```
+
+Vite 会把 `/api` 代理到 `http://localhost:8080`，因此开发页面仍然可以使用同源 Cookie 登录。
+
+如需直接运行 Go 服务内嵌的生产前端，先构建前端产物：
+
+```bash
+cd frontend && npm run build
 go run . -port 8080 -data data
 ```
 
@@ -70,6 +92,8 @@ bin/navigation -data data -reset-auth
 ./build.sh
 ```
 
+`build.sh` 会先执行前端构建，再编译 Go 二进制。首次执行时如果缺少 `frontend/node_modules`，会自动运行 `npm ci`。
+
 默认输出到：
 
 ```text
@@ -100,7 +124,7 @@ docker run -p 8080:8080 -v "$PWD/data:/app/data" navigation
 
 ## API
 
-除 `POST /api/login` 和 `GET /api/session` 外，所有 `/api/*` 接口都需要登录。登录成功后服务端会写入 `navigation_session` Cookie，会话有效期为 24 小时。
+公开读取接口无需登录；站点写入、分类修改、页面设置保存、账号修改和退出登录需要登录。登录成功后服务端会写入 `navigation_session` Cookie，会话有效期为 24 小时。
 
 ### 认证与账号
 
