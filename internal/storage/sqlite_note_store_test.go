@@ -86,3 +86,51 @@ func TestSQLiteNoteStoreMissingRows(t *testing.T) {
 		t.Fatalf("SoftDeleteNote() error = %v, want error", err)
 	}
 }
+
+func TestSQLiteNoteStoreRebuildNoteIndex(t *testing.T) {
+	store := newSQLiteNoteTestStore(t)
+	if err := store.CreateNote(domain.Note{
+		ID:        "note_1",
+		Title:     "旧标题",
+		FilePath:  "notes/2026/05/note_1.md",
+		Status:    domain.NoteStatusActive,
+		Pinned:    true,
+		CreatedAt: "2026-05-01T00:00:00Z",
+		UpdatedAt: "2026-05-01T00:00:00Z",
+	}); err != nil {
+		t.Fatalf("CreateNote() error = %v", err)
+	}
+	if err := store.CreateNote(domain.Note{
+		ID:        "missing",
+		Title:     "缺失文件",
+		FilePath:  "notes/2026/05/missing.md",
+		Status:    domain.NoteStatusActive,
+		CreatedAt: "2026-05-01T00:00:00Z",
+		UpdatedAt: "2026-05-01T00:00:00Z",
+	}); err != nil {
+		t.Fatalf("CreateNote(missing) error = %v", err)
+	}
+
+	if err := store.RebuildNoteIndex([]domain.Note{{
+		ID:        "note_1",
+		Title:     "新标题",
+		FilePath:  "notes/2026/05/note_1.md",
+		Summary:   "新摘要",
+		Status:    domain.NoteStatusActive,
+		CreatedAt: "2026-05-28T00:00:00Z",
+		UpdatedAt: "2026-05-28T00:00:00Z",
+	}}); err != nil {
+		t.Fatalf("RebuildNoteIndex() error = %v", err)
+	}
+
+	notes, err := store.ListNotes("", "")
+	if err != nil {
+		t.Fatalf("ListNotes() error = %v", err)
+	}
+	if len(notes) != 1 {
+		t.Fatalf("notes = %d, want 1", len(notes))
+	}
+	if notes[0].Title != "新标题" || !notes[0].Pinned || notes[0].CreatedAt != "2026-05-01T00:00:00Z" {
+		t.Fatalf("note = %#v, want rebuilt note preserving pin and created_at", notes[0])
+	}
+}

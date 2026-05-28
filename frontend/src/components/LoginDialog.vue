@@ -27,7 +27,7 @@ const form = reactive({ username: '', password: '' })
           <TextField v-model="form.username" label="账号" autocomplete="username" required />
           <TextField v-model="form.password" label="密码" type="password" autocomplete="current-password" required />
           <p class="min-h-5 text-sm text-[var(--danger-text)]">{{ error }}</p>
-          <UiButton type="submit">登录</UiButton>
+          <UiButton type="submit" variant="outline">登录</UiButton>
           <UiButton variant="outline" @click="emit('close')">暂不登录，继续浏览</UiButton>
         </form>
       </section>

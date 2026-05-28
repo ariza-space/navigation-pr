@@ -60,6 +60,11 @@ func (s *memoryNoteStore) SoftDeleteNote(id, deletedAt string) error {
 	return sql.ErrNoRows
 }
 
+func (s *memoryNoteStore) RebuildNoteIndex(notes []domain.Note) error {
+	s.notes = append([]domain.Note(nil), notes...)
+	return nil
+}
+
 func (s *memoryNoteStore) NewRelativePath(id string, now time.Time) string {
 	return "notes/2026/05/" + id + ".md"
 }
@@ -82,6 +87,18 @@ func (s *memoryNoteStore) Read(relativePath string) (string, error) {
 
 func (s *memoryNoteStore) MoveToTrash(relativePath, id string) (string, error) {
 	return relativePath, nil
+}
+
+func (s *memoryNoteStore) ListMarkdownFiles() ([]domain.NoteFile, error) {
+	files := []domain.NoteFile{}
+	for path, content := range s.files {
+		files = append(files, domain.NoteFile{
+			FilePath:  path,
+			Content:   content,
+			UpdatedAt: "2026-05-28T00:00:00Z",
+		})
+	}
+	return files, nil
 }
 
 func TestCreateNoteCompletesMetadataAndSummary(t *testing.T) {
@@ -177,5 +194,37 @@ func TestDeleteNoteSoftDeletes(t *testing.T) {
 	}
 	if store.notes[0].Status != domain.NoteStatusDeleted || store.notes[0].DeletedAt == "" {
 		t.Fatalf("note was not soft deleted: %#v", store.notes[0])
+	}
+}
+
+func TestSyncNoteIndexRebuildsFromMarkdownFiles(t *testing.T) {
+	store := &memoryNoteStore{
+		notes: []domain.Note{{ID: "missing", Status: domain.NoteStatusActive}},
+		files: map[string]string{
+			"notes/2026/05/note_1.md":     "# 同步标题\n\n正文内容",
+			"notes/2026/05/loose-file.md": "没有标题的正文",
+		},
+	}
+	service := NewNoteService(store, store)
+
+	result, err := service.SyncNoteIndex()
+	if err != nil {
+		t.Fatalf("SyncNoteIndex() error = %v", err)
+	}
+	if result.Scanned != 2 || result.Indexed != 2 || result.Skipped != 0 {
+		t.Fatalf("result = %#v, want scanned and indexed 2", result)
+	}
+	if len(store.notes) != 2 {
+		t.Fatalf("notes = %d, want 2", len(store.notes))
+	}
+	byID := map[string]domain.Note{}
+	for _, note := range store.notes {
+		byID[note.ID] = note
+	}
+	if byID["note_1"].Title != "同步标题" {
+		t.Fatalf("note_1 = %#v, want markdown title", byID["note_1"])
+	}
+	if byID["loose-file"].Title != "loose-file" {
+		t.Fatalf("loose-file title = %q, want filename fallback", byID["loose-file"].Title)
 	}
 }

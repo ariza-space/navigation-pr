@@ -37,7 +37,7 @@ const emit = defineEmits<{
           :class="{ 'module-tab-active': activeModule === 'notes' }"
           @click="emit('module', 'notes')"
         >
-          <BookOpen class="h-4 w-4" /> 笔记
+          <BookOpen class="h-4 w-4" /> 文档
         </button>
       </nav>
       <UserMenu

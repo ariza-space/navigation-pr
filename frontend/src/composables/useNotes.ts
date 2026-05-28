@@ -5,6 +5,7 @@ import {
   deleteNote as deleteNoteRequest,
   getNote,
   listNotes,
+  syncNoteIndex,
   updateNote,
 } from '@/lib/api'
 import type { Note, NoteContent, NoteInput } from '@/types/api'
@@ -24,6 +25,7 @@ export function useNotes() {
   const query = ref('')
   const loading = ref(false)
   const saving = ref(false)
+  const syncing = ref(false)
   const error = ref('')
 
   function resetDraft() {
@@ -91,6 +93,22 @@ export function useNotes() {
     await loadNotes()
   }
 
+  async function syncIndex() {
+    syncing.value = true
+    error.value = ''
+    try {
+      const result = await syncNoteIndex()
+      await loadNotes()
+      if (selected.value) {
+        const stillExists = notes.value.some((note) => note.id === selected.value?.id)
+        if (!stillExists) resetDraft()
+      }
+      return result
+    } finally {
+      syncing.value = false
+    }
+  }
+
   return {
     notes,
     selected,
@@ -98,11 +116,13 @@ export function useNotes() {
     query,
     loading,
     saving,
+    syncing,
     error,
     loadNotes,
     selectNote,
     saveDraft,
     removeSelected,
     resetDraft,
+    syncIndex,
   }
 }

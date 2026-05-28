@@ -114,6 +114,68 @@ func (s *SQLiteSiteStore) SoftDeleteNote(id, deletedAt string) error {
 	return nil
 }
 
+// RebuildNoteIndex 用扫描到的 Markdown 文件重建 notes 元数据索引。
+func (s *SQLiteSiteStore) RebuildNoteIndex(notes []domain.Note) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	existing := map[string]domain.Note{}
+	rows, err := tx.Query(`
+		SELECT id, title, file_path, summary, tags, status, pinned, created_at, updated_at, deleted_at
+		FROM notes
+	`)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		note, err := scanNote(rows)
+		if err != nil {
+			rows.Close()
+			return err
+		}
+		existing[note.ID] = note
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(`DELETE FROM notes`); err != nil {
+		return err
+	}
+	stmt, err := tx.Prepare(`
+		INSERT INTO notes (
+			id, title, file_path, summary, tags, status, pinned, created_at, updated_at, deleted_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, note := range notes {
+		if old, ok := existing[note.ID]; ok {
+			note.Pinned = old.Pinned
+			if old.CreatedAt != "" {
+				note.CreatedAt = old.CreatedAt
+			}
+		}
+		tags, err := json.Marshal(note.Tags)
+		if err != nil {
+			return err
+		}
+		if _, err := stmt.Exec(note.ID, note.Title, note.FilePath, note.Summary, string(tags), note.Status, boolToInt(note.Pinned), note.CreatedAt, note.UpdatedAt, note.DeletedAt); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 type noteScanner interface {
 	Scan(dest ...any) error
 }

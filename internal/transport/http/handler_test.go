@@ -102,6 +102,11 @@ func (s *testStore) SoftDeleteNote(id, deletedAt string) error {
 	return sql.ErrNoRows
 }
 
+func (s *testStore) RebuildNoteIndex(notes []domain.Note) error {
+	s.notes = append([]domain.Note(nil), notes...)
+	return nil
+}
+
 func (s *testStore) NewRelativePath(id string, now time.Time) string {
 	return "notes/2026/05/" + id + ".md"
 }
@@ -124,6 +129,18 @@ func (s *testStore) Read(relativePath string) (string, error) {
 
 func (s *testStore) MoveToTrash(relativePath, id string) (string, error) {
 	return relativePath, nil
+}
+
+func (s *testStore) ListMarkdownFiles() ([]domain.NoteFile, error) {
+	files := []domain.NoteFile{}
+	for path, content := range s.contents {
+		files = append(files, domain.NoteFile{
+			FilePath:  path,
+			Content:   content,
+			UpdatedAt: "2026-05-28T00:00:00Z",
+		})
+	}
+	return files, nil
 }
 
 func newTestHandler(t *testing.T) http.Handler {
@@ -169,6 +186,7 @@ func TestAnonymousWriteEndpointsRequireLogin(t *testing.T) {
 		{method: http.MethodPut, path: "/api/settings", body: `{}`},
 		{method: http.MethodGet, path: "/api/notes"},
 		{method: http.MethodPost, path: "/api/notes", body: `{}`},
+		{method: http.MethodPost, path: "/api/notes/sync"},
 		{method: http.MethodGet, path: "/api/notes/note-1"},
 		{method: http.MethodPut, path: "/api/notes/note-1", body: `{}`},
 		{method: http.MethodDelete, path: "/api/notes/note-1"},
@@ -182,6 +200,38 @@ func TestAnonymousWriteEndpointsRequireLogin(t *testing.T) {
 				t.Fatalf("status = %d, want %d", recorder.Code, http.StatusUnauthorized)
 			}
 		})
+	}
+}
+
+func TestAuthenticatedNoteSync(t *testing.T) {
+	store := &testStore{
+		sites:    []domain.Site{{ID: "site-1", Name: "Go", URL: "https://go.dev", Category: "Dev", Sort: 1}},
+		contents: map[string]string{"notes/2026/05/note_1.md": "# 同步笔记\n\n正文"},
+	}
+	auth, err := service.NewAuthService(store)
+	if err != nil {
+		t.Fatalf("NewAuthService() error = %v", err)
+	}
+	token, _, err := auth.Login(service.DefaultUsername, service.DefaultPassword)
+	if err != nil {
+		t.Fatalf("Login() error = %v", err)
+	}
+	static := fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte("index")}}
+	handler := NewHandler(service.NewSiteService(store), auth, service.NewNoteService(store, store), static).Routes()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/notes/sync", nil)
+	req.AddCookie(&http.Cookie{Name: "navigation_session", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("sync status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var result domain.NoteSyncResult
+	if err := json.NewDecoder(rec.Body).Decode(&result); err != nil {
+		t.Fatalf("decode sync result: %v", err)
+	}
+	if result.Indexed != 1 || len(store.notes) != 1 || store.notes[0].Title != "同步笔记" {
+		t.Fatalf("result = %#v notes = %#v, want one synced note", result, store.notes)
 	}
 }
 

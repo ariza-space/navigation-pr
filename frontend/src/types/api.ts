@@ -51,6 +51,12 @@ export interface NoteContent extends Note {
   content: string
 }
 
+export interface NoteSyncResult {
+  scanned: number
+  indexed: number
+  skipped: number
+}
+
 export interface LoginInput {
   username: string
   password: string

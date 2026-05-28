@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { Archive, FileText, Loader2, Pin, Plus, Save, Search, Trash2 } from 'lucide-vue-next'
+import { Eye, FileText, Loader2, Pencil, Pin, Plus, RefreshCw, Save, Search, Trash2 } from 'lucide-vue-next'
+import { MdEditor, MdPreview } from 'md-editor-v3'
+import 'md-editor-v3/lib/style.css'
 import { computed, ref, watch } from 'vue'
 
 import UiButton from '@/components/ui/Button.vue'
@@ -12,6 +14,7 @@ const props = defineProps<{
   draft: NoteInput
   loading: boolean
   saving: boolean
+  syncing: boolean
   error: string
   query: string
 }>()
@@ -19,6 +22,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   new: []
   select: [note: Note]
+  sync: []
   save: []
   delete: []
   search: [query: string]
@@ -26,12 +30,18 @@ const emit = defineEmits<{
 }>()
 
 const tagText = ref('')
+const mode = ref<'preview' | 'edit'>('edit')
 
 const debouncedSearch = debounce((value: string) => {
   emit('search', value)
 }, 250)
 
 const activeID = computed(() => props.selected?.id || '')
+const isPreview = computed(() => Boolean(props.selected) && mode.value === 'preview')
+const contentModel = computed({
+  get: () => props.draft.content,
+  set: (value: string) => patchDraft({ content: value }),
+})
 
 watch(() => props.query, (value) => {
   debouncedSearch(value)
@@ -43,6 +53,16 @@ watch(() => props.draft.tags, (tags) => {
 
 function patchDraft(patch: Partial<NoteInput>) {
   emit('update:draft', { ...props.draft, ...patch })
+}
+
+function createNote() {
+  mode.value = 'edit'
+  emit('new')
+}
+
+function openNote(note: Note) {
+  mode.value = 'preview'
+  emit('select', note)
 }
 
 function updateTags(value: string) {
@@ -69,12 +89,17 @@ function formatDate(value: string) {
     <div class="notes-panel notes-sidebar">
       <div class="flex items-center justify-between gap-3">
         <div>
-          <h2 class="text-2xl font-semibold text-[var(--page-text)]">笔记</h2>
-          <p class="mt-1 text-sm text-[var(--page-soft)]">Markdown 草稿与长期资料</p>
+          <h2 class="text-2xl font-semibold text-[var(--page-text)]">文档</h2>
+          <p class="mt-1 text-sm text-[var(--page-soft)]">基于 Markdown</p>
         </div>
-        <UiButton size="icon" title="新建笔记" @click="emit('new')">
-          <Plus class="h-4 w-4" />
-        </UiButton>
+        <div class="flex shrink-0 gap-2">
+          <UiButton title="同步 Markdown 文件索引" type="button" variant="outline" :disabled="syncing" @click="emit('sync')">
+            <RefreshCw class="h-4 w-4" :class="{ 'animate-spin': syncing }" /> 索引同步
+          </UiButton>
+          <UiButton title="新建文档" type="button" variant="outline" @click="createNote">
+            <Plus class="h-4 w-4" /> 新建
+          </UiButton>
+        </div>
       </div>
 
       <label class="mt-5 flex h-11 items-center gap-2 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-input)] px-3 text-[var(--page-muted)]">
@@ -94,7 +119,7 @@ function formatDate(value: string) {
           type="button"
           class="note-row"
           :class="{ 'note-row-active': note.id === activeID }"
-          @click="emit('select', note)"
+          @click="openNote(note)"
         >
           <span class="flex min-w-0 items-center gap-2">
             <Pin v-if="note.pinned" class="h-3.5 w-3.5 shrink-0 text-[var(--accent)]" />
@@ -109,7 +134,7 @@ function formatDate(value: string) {
         </button>
 
         <div v-if="!notes.length && !loading" class="rounded-lg border border-dashed border-[var(--border)] px-4 py-8 text-center text-sm text-[var(--page-soft)]">
-          暂无笔记
+          暂无文档
         </div>
         <div v-if="loading" class="flex items-center justify-center gap-2 py-8 text-sm text-[var(--page-muted)]">
           <Loader2 class="h-4 w-4 animate-spin" /> 读取中
@@ -121,17 +146,23 @@ function formatDate(value: string) {
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div class="min-w-0">
           <p class="text-xs font-semibold uppercase tracking-[.16em] text-[var(--page-soft)]">
-            {{ selected ? '正在编辑' : '新建笔记' }}
+            {{ selected ? (isPreview ? '预览文档' : '正在编辑') : '新建文档' }}
           </p>
           <h3 class="mt-1 truncate text-xl font-semibold text-[var(--page-text)]">
-            {{ draft.title || '未命名笔记' }}
+            {{ draft.title || '未命名文档' }}
           </h3>
         </div>
         <div class="flex flex-wrap gap-2">
-          <UiButton type="button" variant="outline" @click="patchDraft({ pinned: !draft.pinned })">
+          <UiButton v-if="selected && isPreview" type="button" variant="outline" @click="mode = 'edit'">
+            <Pencil class="h-4 w-4" /> 编辑
+          </UiButton>
+          <UiButton v-if="selected && !isPreview" type="button" variant="outline" @click="mode = 'preview'">
+            <Eye class="h-4 w-4" /> 预览
+          </UiButton>
+          <UiButton v-if="!isPreview" type="button" variant="outline" @click="patchDraft({ pinned: !draft.pinned })">
             <Pin class="h-4 w-4" /> {{ draft.pinned ? '取消置顶' : '置顶' }}
           </UiButton>
-          <UiButton type="submit" :disabled="saving">
+          <UiButton v-if="!isPreview" type="submit" :disabled="saving" variant="success">
             <Save class="h-4 w-4" /> {{ saving ? '保存中' : '保存' }}
           </UiButton>
           <UiButton v-if="selected" type="button" variant="danger" @click="emit('delete')">
@@ -144,30 +175,24 @@ function formatDate(value: string) {
         {{ error }}
       </div>
 
-      <div class="grid gap-4 md:grid-cols-[1fr_180px]">
+      <div v-if="isPreview" class="note-preview-meta">
+        <span v-if="draft.pinned">置顶</span>
+        <span>{{ draft.tags.join(' / ') || '未标记' }}</span>
+      </div>
+
+      <div v-if="!isPreview" class="grid gap-4">
         <label class="grid gap-2 text-sm text-[var(--page-muted)]">
           <span>标题</span>
           <input
             :value="draft.title"
             class="h-11 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-input)] px-3 text-[15px] text-[var(--page-text)] outline-none transition placeholder:text-[var(--page-soft)] focus:border-[var(--focus)] focus:ring-4 focus:ring-[var(--focus-ring)]"
-            placeholder="笔记标题"
+            placeholder="文档标题"
             @input="patchDraft({ title: ($event.target as HTMLInputElement).value })"
           />
         </label>
-        <label class="grid gap-2 text-sm text-[var(--page-muted)]">
-          <span>状态</span>
-          <select
-            :value="draft.status"
-            class="h-11 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-input)] px-3 text-[15px] text-[var(--page-text)] outline-none transition focus:border-[var(--focus)] focus:ring-4 focus:ring-[var(--focus-ring)]"
-            @change="patchDraft({ status: ($event.target as HTMLSelectElement).value as NoteInput['status'] })"
-          >
-            <option value="active">活动</option>
-            <option value="archived">归档</option>
-          </select>
-        </label>
       </div>
 
-      <label class="grid gap-2 text-sm text-[var(--page-muted)]">
+      <label v-if="!isPreview" class="grid gap-2 text-sm text-[var(--page-muted)]">
         <span>标签</span>
         <input
           :value="tagText"
@@ -177,15 +202,24 @@ function formatDate(value: string) {
         />
       </label>
 
-      <label class="grid min-h-[420px] flex-1 gap-2 text-sm text-[var(--page-muted)]">
-        <span class="flex items-center gap-2"><Archive class="h-4 w-4" /> Markdown</span>
-        <textarea
-          :value="draft.content"
-          class="min-h-[420px] flex-1 resize-y rounded-lg border border-[var(--border-soft)] bg-[var(--surface-input)] px-4 py-3 text-[15px] leading-7 text-[var(--page-text)] outline-none transition placeholder:text-[var(--page-soft)] focus:border-[var(--focus)] focus:ring-4 focus:ring-[var(--focus-ring)]"
-          placeholder="# 标题&#10;&#10;写下正文..."
-          @input="patchDraft({ content: ($event.target as HTMLTextAreaElement).value })"
+      <div class="note-markdown-shell" :class="{ 'note-markdown-preview-shell': isPreview }">
+        <MdPreview
+          v-if="isPreview"
+          :editor-id="`note-preview-${selected?.id || 'draft'}`"
+          :model-value="draft.content || '暂无内容'"
+          preview-theme="github"
+          code-theme="github"
         />
-      </label>
+        <MdEditor
+          v-else
+          v-model="contentModel"
+          language="zh-CN"
+          preview-theme="github"
+          code-theme="github"
+          placeholder="# 标题&#10;&#10;写下正文..."
+          no-upload-img
+        />
+      </div>
     </form>
   </section>
 </template>
@@ -215,6 +249,61 @@ function formatDate(value: string) {
   flex-direction: column;
   gap: 18px;
   padding: 22px;
+}
+
+.note-preview-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--page-soft);
+  font-size: 12px;
+}
+
+.note-preview-meta span {
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  background: var(--surface);
+  padding: 4px 10px;
+}
+
+.note-markdown-shell {
+  min-height: 480px;
+  flex: 1;
+  overflow: hidden;
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  background: var(--surface-input);
+}
+
+.note-markdown-shell :deep(.md-editor) {
+  height: 100%;
+  min-height: 480px;
+  border-radius: 12px;
+  background: var(--surface-input);
+  color: var(--page-text);
+}
+
+.note-markdown-shell :deep(.md-editor-preview-wrapper) {
+  min-height: 480px;
+  background: var(--surface-input);
+  padding: 20px;
+}
+
+.note-markdown-preview-shell {
+  padding: 8px;
+}
+
+.note-markdown-preview-shell :deep(.md-editor-preview-wrapper) {
+  padding: 28px 32px;
+}
+
+.note-markdown-shell :deep(.md-editor-preview) {
+  color: var(--page-text);
+}
+
+.note-markdown-preview-shell :deep(.md-editor-preview) {
+  max-width: 78ch;
+  margin: 20px;
 }
 
 .note-row {

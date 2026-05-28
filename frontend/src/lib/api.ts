@@ -1,4 +1,4 @@
-import type { AccountInput, AppSettings, CategoryStat, LoginInput, Note, NoteContent, NoteInput, Site, SiteInput, Stats, UserSession } from '@/types/api'
+import type { AccountInput, AppSettings, CategoryStat, LoginInput, Note, NoteContent, NoteInput, NoteSyncResult, Site, SiteInput, Stats, UserSession } from '@/types/api'
 
 export class APIError extends Error {
   status: number
@@ -144,4 +144,8 @@ export function updateNote(id: string, input: NoteInput) {
 
 export function deleteNote(id: string) {
   return requestJSON<null>(`/api/notes/${encodeURIComponent(id)}`, { method: 'DELETE' })
+}
+
+export function syncNoteIndex() {
+  return requestJSON<NoteSyncResult>('/api/notes/sync', { method: 'POST' })
 }

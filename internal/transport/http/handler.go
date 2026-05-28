@@ -39,6 +39,7 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("/api/sites", h.handleSites)
 	mux.HandleFunc("/api/sites/", h.requireAuth(h.handleSiteByID))
 	mux.HandleFunc("/api/notes", h.requireAuth(h.handleNotes))
+	mux.HandleFunc("/api/notes/sync", h.requireAuth(h.handleNoteSync))
 	mux.HandleFunc("/api/notes/", h.requireAuth(h.handleNoteByID))
 	mux.HandleFunc("/api/categories", h.handleCategories)
 	mux.HandleFunc("/api/categories/", h.requireAuth(h.handleCategoryByName))
@@ -325,6 +326,19 @@ func (h *Handler) handleNoteByID(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "不支持的请求方法")
 	}
+}
+
+func (h *Handler) handleNoteSync(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "不支持的请求方法")
+		return
+	}
+	result, err := h.notes.SyncNoteIndex()
+	if err != nil {
+		h.writeNoteServiceError(w, err, "同步笔记失败")
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 
 func (h *Handler) handleCategories(w http.ResponseWriter, r *http.Request) {

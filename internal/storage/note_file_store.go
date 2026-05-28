@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"navigation/internal/domain"
 )
 
 // NoteFileStore 管理笔记 Markdown 文件读写。
@@ -75,6 +77,45 @@ func (s *NoteFileStore) MoveToTrash(relativePath, id string) (string, error) {
 		return "", err
 	}
 	return trashRelative, nil
+}
+
+// ListMarkdownFiles 扫描 notes 目录下的 Markdown 文件，跳过回收站目录。
+func (s *NoteFileStore) ListMarkdownFiles() ([]domain.NoteFile, error) {
+	files := []domain.NoteFile{}
+	err := filepath.WalkDir(s.notesDir, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			if entry.Name() == ".trash" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if strings.ToLower(filepath.Ext(entry.Name())) != ".md" {
+			return nil
+		}
+		rel, err := filepath.Rel(s.dataDir, path)
+		if err != nil {
+			return err
+		}
+		relativePath := filepath.ToSlash(rel)
+		content, err := s.Read(relativePath)
+		if err != nil {
+			return err
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		files = append(files, domain.NoteFile{
+			FilePath:  relativePath,
+			Content:   content,
+			UpdatedAt: info.ModTime().Format(time.RFC3339),
+		})
+		return nil
+	})
+	return files, err
 }
 
 func (s *NoteFileStore) resolve(relativePath string) (string, error) {

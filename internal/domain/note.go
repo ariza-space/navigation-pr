@@ -28,3 +28,17 @@ type NoteContent struct {
 	Note
 	Content string `json:"content"`
 }
+
+// NoteFile 表示从 Markdown 实体文件扫描出的正文。
+type NoteFile struct {
+	FilePath  string `json:"filePath"`
+	Content   string `json:"content"`
+	UpdatedAt string `json:"updatedAt"`
+}
+
+// NoteSyncResult 表示一次笔记文件索引重建的结果。
+type NoteSyncResult struct {
+	Scanned int `json:"scanned"`
+	Indexed int `json:"indexed"`
+	Skipped int `json:"skipped"`
+}

@@ -2,10 +2,12 @@ package service
 
 import (
 	"crypto/rand"
+	"crypto/sha1"
 	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -30,6 +32,7 @@ type NoteMetaStore interface {
 	CreateNote(domain.Note) error
 	UpdateNote(domain.Note) error
 	SoftDeleteNote(id, deletedAt string) error
+	RebuildNoteIndex([]domain.Note) error
 }
 
 // NoteContentStore 定义笔记 Markdown 文件读写能力。
@@ -38,6 +41,7 @@ type NoteContentStore interface {
 	Write(relativePath, content string) error
 	Read(relativePath string) (string, error)
 	MoveToTrash(relativePath, id string) (string, error)
+	ListMarkdownFiles() ([]domain.NoteFile, error)
 }
 
 // NoteService 封装笔记业务规则。
@@ -175,6 +179,51 @@ func (s *NoteService) DeleteNote(id string) error {
 	return nil
 }
 
+// SyncNoteIndex 扫描 Markdown 实体文件，并以文件为准重建数据库索引。
+func (s *NoteService) SyncNoteIndex() (domain.NoteSyncResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	files, err := s.content.ListMarkdownFiles()
+	if err != nil {
+		return domain.NoteSyncResult{}, StoreError{Op: StoreOpRead, Err: err}
+	}
+	result := domain.NoteSyncResult{Scanned: len(files)}
+	notes := make([]domain.Note, 0, len(files))
+	usedIDs := map[string]bool{}
+	for _, file := range files {
+		if len([]byte(file.Content)) > maxNoteContentLength {
+			result.Skipped++
+			continue
+		}
+		note := domain.NoteContent{
+			Note: domain.Note{
+				ID:        noteIDFromPath(file.FilePath, usedIDs),
+				FilePath:  file.FilePath,
+				Status:    domain.NoteStatusActive,
+				CreatedAt: file.UpdatedAt,
+				UpdatedAt: file.UpdatedAt,
+				Tags:      []string{},
+			},
+			Content: file.Content,
+		}
+		normalizeNoteContent(&note)
+		if note.Title == "" {
+			note.Title = titleFromPath(file.FilePath)
+		}
+		if err := validateNoteContent(note); err != nil {
+			result.Skipped++
+			continue
+		}
+		notes = append(notes, note.Note)
+		result.Indexed++
+	}
+	if err := s.meta.RebuildNoteIndex(notes); err != nil {
+		return domain.NoteSyncResult{}, StoreError{Op: StoreOpSave, Err: err}
+	}
+	return result, nil
+}
+
 func normalizeNoteContent(input *domain.NoteContent) {
 	input.Title = strings.TrimSpace(input.Title)
 	input.Status = strings.TrimSpace(input.Status)
@@ -257,4 +306,42 @@ func newNoteID() string {
 		return "note_" + hex.EncodeToString(b[:])
 	}
 	return fmt.Sprintf("note_%d", time.Now().UnixNano())
+}
+
+var noteIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+
+func noteIDFromPath(relativePath string, used map[string]bool) string {
+	base := strings.TrimSuffix(filepath.Base(relativePath), filepath.Ext(relativePath))
+	id := base
+	if !noteIDPattern.MatchString(id) || id == "" {
+		id = "note_" + shortPathHash(relativePath)
+	}
+	if !used[id] {
+		used[id] = true
+		return id
+	}
+	id = "note_" + shortPathHash(relativePath)
+	for used[id] {
+		id = "note_" + shortPathHash(relativePath+fmt.Sprintf("_%d", len(used)))
+	}
+	used[id] = true
+	return id
+}
+
+func shortPathHash(value string) string {
+	sum := sha1.Sum([]byte(value))
+	return hex.EncodeToString(sum[:])[:12]
+}
+
+func titleFromPath(relativePath string) string {
+	title := strings.TrimSuffix(filepath.Base(relativePath), filepath.Ext(relativePath))
+	title = strings.TrimSpace(strings.ReplaceAll(title, "_", " "))
+	if title == "" {
+		return "未命名笔记"
+	}
+	runes := []rune(title)
+	if len(runes) > maxNoteTitleLength {
+		return string(runes[:maxNoteTitleLength])
+	}
+	return title
 }

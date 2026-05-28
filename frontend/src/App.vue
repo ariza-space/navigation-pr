@@ -220,6 +220,15 @@ async function deleteNote() {
   }
 }
 
+async function syncNotes() {
+  try {
+    await notes.syncIndex()
+  } catch (error) {
+    if (auth.handleAuthError(error)) return
+    notes.error.value = error instanceof Error ? error.message : '同步笔记失败'
+  }
+}
+
 function updateNoteQuery(query: string) {
   notes.query.value = query
 }
@@ -271,10 +280,12 @@ onMounted(() => {
       :draft="notes.draft.value"
       :loading="notes.loading.value"
       :saving="notes.saving.value"
+      :syncing="notes.syncing.value"
       :error="notes.error.value"
       :query="notes.query.value"
       @new="notes.resetDraft"
       @select="selectNote"
+      @sync="syncNotes"
       @save="saveNote"
       @delete="deleteNote"
       @search="updateNoteQuery"
