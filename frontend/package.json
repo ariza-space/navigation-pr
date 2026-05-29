@@ -14,8 +14,8 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-vue-next": "^0.468.0",
-    "md-editor-v3": "^6.5.1",
     "tailwind-merge": "^2.6.0",
+    "vditor": "^3.11.2",
     "vue": "^3.5.13"
   },
   "devDependencies": {

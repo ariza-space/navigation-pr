@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { Eye, FileText, Globe2, Loader2, Lock, Pencil, Pin, Plus, RefreshCw, Save, Search, Trash2 } from 'lucide-vue-next'
-import { MdEditor, MdPreview } from 'md-editor-v3'
-import 'md-editor-v3/lib/style.css'
-import { computed, ref, watch } from 'vue'
+import Vditor from 'vditor'
+import 'vditor/dist/index.css'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 
 import UiButton from '@/components/ui/Button.vue'
 import { debounce } from '@/lib/utils'
@@ -32,6 +32,9 @@ const emit = defineEmits<{
 
 const tagText = ref('')
 const mode = ref<'preview' | 'edit'>('edit')
+const editorElement = ref<HTMLDivElement | null>(null)
+const previewElement = ref<HTMLDivElement | null>(null)
+let editor: Vditor | null = null
 
 // 列表搜索走父级 composable，子组件只做输入节流和事件派发。
 const debouncedSearch = debounce((value: string) => {
@@ -42,11 +45,6 @@ const activeID = computed(() => props.selected?.id || '')
 const canEdit = computed(() => Boolean(props.user))
 const isPreview = computed(() => Boolean(props.selected) && mode.value === 'preview')
 const displayPreview = computed(() => isPreview.value || !canEdit.value)
-// md-editor-v3 需要 v-model 字符串，这里把 props.draft 的不可变更新包装成双向模型。
-const contentModel = computed({
-  get: () => props.draft.content,
-  set: (value: string) => patchDraft({ content: value }),
-})
 
 watch(() => props.query, (value) => {
   debouncedSearch(value)
@@ -56,6 +54,31 @@ watch(() => props.query, (value) => {
 watch(() => props.draft.tags, (tags) => {
   tagText.value = tags.join(', ')
 }, { immediate: true })
+
+watch(displayPreview, async (preview) => {
+  if (preview) {
+    destroyEditor()
+    await renderPreview()
+    return
+  }
+
+  await initEditor()
+}, { immediate: true, flush: 'post' })
+
+watch(() => props.draft.content, async (content) => {
+  if (displayPreview.value) {
+    await renderPreview()
+    return
+  }
+
+  if (editor && editor.getValue() !== content) {
+    editor.setValue(content, true)
+  }
+})
+
+onBeforeUnmount(() => {
+  destroyEditor()
+})
 
 // draft 由父组件持有，任何局部修改都通过整体拷贝向上更新，避免直接改 props。
 function patchDraft(patch: Partial<NoteInput>) {
@@ -93,6 +116,66 @@ function formatDate(value: string) {
 
 function visibilityText(visibility: Note['visibility']) {
   return visibility === 'public' ? '公开' : '隐私'
+}
+
+async function initEditor() {
+  await nextTick()
+  if (!editorElement.value || displayPreview.value) return
+  if (editor) return
+
+  editor = new Vditor(editorElement.value, {
+    mode: 'ir',
+    value: props.draft.content,
+    height: '100%',
+    minHeight: 480,
+    placeholder: '# 标题\n\n写下正文...',
+    lang: 'zh_CN',
+    cache: {
+      enable: false,
+    },
+    counter: {
+      enable: true,
+      type: 'text',
+    },
+    preview: {
+      delay: 100,
+      maxWidth: 960,
+      theme: {
+        current: 'light',
+      },
+      hljs: {
+        style: 'github',
+      },
+    },
+    toolbarConfig: {
+      pin: true,
+    },
+    input: (value) => {
+      patchDraft({ content: value })
+    },
+  })
+}
+
+function destroyEditor() {
+  if (!editor) return
+  editor.destroy()
+  editor = null
+}
+
+async function renderPreview() {
+  await nextTick()
+  if (!previewElement.value || !displayPreview.value) return
+
+  const content = props.draft.content || (canEdit.value ? '暂无内容' : '请选择左侧公开文档')
+  await Vditor.preview(previewElement.value, content, {
+    mode: 'light',
+    theme: {
+      current: 'light',
+    },
+    hljs: {
+      style: 'github',
+    },
+  })
 }
 </script>
 
@@ -243,21 +326,15 @@ function visibilityText(visibility: Note['visibility']) {
 
       <!-- 预览和编辑复用同一份 draft，切换模式不会丢失未保存内容。 -->
       <div class="note-markdown-shell" :class="{ 'note-markdown-preview-shell': displayPreview }">
-        <MdPreview
+        <div
           v-if="displayPreview"
-          :editor-id="`note-preview-${selected?.id || 'draft'}`"
-          :model-value="draft.content || (canEdit ? '暂无内容' : '请选择左侧公开文档')"
-          preview-theme="github"
-          code-theme="github"
+          ref="previewElement"
+          class="note-vditor-preview"
         />
-        <MdEditor
+        <div
           v-else
-          v-model="contentModel"
-          language="zh-CN"
-          preview-theme="github"
-          code-theme="github"
-          placeholder="# 标题&#10;&#10;写下正文..."
-          no-upload-img
+          ref="editorElement"
+          class="note-vditor-editor"
         />
       </div>
     </form>
@@ -316,8 +393,17 @@ function visibilityText(visibility: Note['visibility']) {
   background: var(--surface-input);
 }
 
-/* md-editor-v3 的内部节点需要 :deep 才能接入当前主题变量。 */
-.note-markdown-shell :deep(.md-editor) {
+.note-vditor-editor {
+  height: 100%;
+  min-height: 480px;
+}
+
+.note-vditor-preview {
+  min-height: 480px;
+}
+
+/* Vditor 的内部节点需要 :deep 才能接入当前主题变量。 */
+.note-markdown-shell :deep(.vditor) {
   height: 100%;
   min-height: 480px;
   border-radius: 12px;
@@ -325,27 +411,94 @@ function visibilityText(visibility: Note['visibility']) {
   color: var(--page-text);
 }
 
-.note-markdown-shell :deep(.md-editor-preview-wrapper) {
-  min-height: 480px;
+.note-markdown-shell :deep(.vditor-toolbar) {
+  border-bottom-color: var(--border-soft);
+  background: var(--surface);
+}
+
+.note-markdown-shell :deep(.vditor-toolbar--pin) {
+  background: var(--surface-solid);
+}
+
+.note-markdown-shell :deep(.vditor-toolbar__item button) {
+  color: var(--page-muted);
+}
+
+.note-markdown-shell :deep(.vditor-toolbar__item button:hover) {
+  background: var(--surface-hover);
+  color: var(--page-text);
+}
+
+.note-markdown-shell :deep(.vditor-ir) {
+  min-height: 430px;
   background: var(--surface-input);
-  padding: 20px;
+}
+
+.note-markdown-shell :deep(.vditor-ir pre.vditor-reset),
+.note-markdown-shell :deep(.vditor-ir .vditor-reset) {
+  background: transparent;
+  color: var(--page-text);
+}
+
+.note-markdown-shell :deep(.vditor-ir__node) {
+  color: var(--page-text);
+}
+
+.note-markdown-shell :deep(.vditor-ir__marker),
+.note-markdown-shell :deep(.vditor-ir__preview) {
+  color: var(--page-soft);
+}
+
+.note-markdown-shell :deep(.vditor-counter) {
+  border-top-color: var(--border-soft);
+  background: var(--surface);
+  color: var(--page-soft);
 }
 
 .note-markdown-preview-shell {
   padding: 8px;
 }
 
-.note-markdown-preview-shell :deep(.md-editor-preview-wrapper) {
-  padding: 28px 32px;
-}
-
-.note-markdown-shell :deep(.md-editor-preview) {
+.note-markdown-shell :deep(.vditor-reset) {
   color: var(--page-text);
 }
 
-.note-markdown-preview-shell :deep(.md-editor-preview) {
+.note-markdown-preview-shell :deep(.vditor-reset) {
   max-width: 78ch;
+  min-height: 480px;
   margin: 20px;
+  padding: 28px 32px;
+  background: transparent;
+}
+
+.note-markdown-shell :deep(.vditor-reset h1),
+.note-markdown-shell :deep(.vditor-reset h2),
+.note-markdown-shell :deep(.vditor-reset h3),
+.note-markdown-shell :deep(.vditor-reset h4),
+.note-markdown-shell :deep(.vditor-reset h5),
+.note-markdown-shell :deep(.vditor-reset h6) {
+  color: var(--page-text);
+  border-bottom-color: var(--border-soft);
+}
+
+.note-markdown-shell :deep(.vditor-reset blockquote),
+.note-markdown-shell :deep(.vditor-reset table),
+.note-markdown-shell :deep(.vditor-reset td),
+.note-markdown-shell :deep(.vditor-reset th) {
+  border-color: var(--border-soft);
+}
+
+.note-markdown-shell :deep(.vditor-reset blockquote) {
+  color: var(--page-muted);
+}
+
+.note-markdown-shell :deep(.vditor-reset code:not(.hljs)) {
+  background: var(--surface);
+  color: var(--accent-strong);
+}
+
+.note-markdown-shell :deep(.vditor-reset a) {
+  color: var(--accent-strong);
 }
 
 .note-row {
