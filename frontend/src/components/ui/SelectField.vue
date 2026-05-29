@@ -11,6 +11,7 @@ const emit = defineEmits<{
 </script>
 
 <template>
+  <!-- 基础选择框只暴露字符串值，选项文案和值由调用方传入。 -->
   <label class="grid gap-2 text-sm text-[var(--page-muted)]">
     <span>{{ label }}</span>
     <select

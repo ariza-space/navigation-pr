@@ -32,12 +32,14 @@ const emit = defineEmits<{
 const tagText = ref('')
 const mode = ref<'preview' | 'edit'>('edit')
 
+// 列表搜索走父级 composable，子组件只做输入节流和事件派发。
 const debouncedSearch = debounce((value: string) => {
   emit('search', value)
 }, 250)
 
 const activeID = computed(() => props.selected?.id || '')
 const isPreview = computed(() => Boolean(props.selected) && mode.value === 'preview')
+// md-editor-v3 需要 v-model 字符串，这里把 props.draft 的不可变更新包装成双向模型。
 const contentModel = computed({
   get: () => props.draft.content,
   set: (value: string) => patchDraft({ content: value }),
@@ -47,10 +49,12 @@ watch(() => props.query, (value) => {
   debouncedSearch(value)
 })
 
+// 标签在 API 中是数组，表单里用逗号文本编辑，选中文档切换时要重新同步。
 watch(() => props.draft.tags, (tags) => {
   tagText.value = tags.join(', ')
 }, { immediate: true })
 
+// draft 由父组件持有，任何局部修改都通过整体拷贝向上更新，避免直接改 props。
 function patchDraft(patch: Partial<NoteInput>) {
   emit('update:draft', { ...props.draft, ...patch })
 }
@@ -65,6 +69,7 @@ function openNote(note: Note) {
   emit('select', note)
 }
 
+// 输入框允许用户自由输入，保存前再归一化成去空白、无空标签的数组。
 function updateTags(value: string) {
   tagText.value = value
   const tags = value.split(',').map((tag) => tag.trim()).filter(Boolean)
@@ -86,6 +91,7 @@ function formatDate(value: string) {
 
 <template>
   <section class="notes-workspace">
+    <!-- 左侧只承担检索、同步和选择文档，正文编辑状态留给右侧表单。 -->
     <div class="notes-panel notes-sidebar">
       <div class="flex items-center justify-between gap-3">
         <div>
@@ -142,6 +148,7 @@ function formatDate(value: string) {
       </div>
     </div>
 
+    <!-- 编辑区用 form 包住标题、标签和 Markdown 内容，提交统一触发保存。 -->
     <form class="notes-panel notes-editor" @submit.prevent="emit('save')">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div class="min-w-0">
@@ -202,6 +209,7 @@ function formatDate(value: string) {
         />
       </label>
 
+      <!-- 预览和编辑复用同一份 draft，切换模式不会丢失未保存内容。 -->
       <div class="note-markdown-shell" :class="{ 'note-markdown-preview-shell': isPreview }">
         <MdPreview
           v-if="isPreview"
@@ -225,6 +233,7 @@ function formatDate(value: string) {
 </template>
 
 <style scoped>
+/* 工作区在桌面端保持左右分栏，便于一边浏览索引一边编辑正文。 */
 .notes-workspace {
   display: grid;
   grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
@@ -275,6 +284,7 @@ function formatDate(value: string) {
   background: var(--surface-input);
 }
 
+/* md-editor-v3 的内部节点需要 :deep 才能接入当前主题变量。 */
 .note-markdown-shell :deep(.md-editor) {
   height: 100%;
   min-height: 480px;

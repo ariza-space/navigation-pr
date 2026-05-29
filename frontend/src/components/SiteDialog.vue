@@ -22,6 +22,7 @@ const emit = defineEmits<{
   save: [input: SiteInput, id?: string]
 }>()
 
+// 弹窗表单使用本地副本，只有点击保存时才把数据提交给父组件。
 const form = reactive<SiteInput>({
   name: '',
   category: '',
@@ -35,12 +36,14 @@ const form = reactive<SiteInput>({
 const categoryMenuOpen = ref(false)
 const emojiOpen = ref(false)
 
+// “全部”是筛选入口，不是可写入站点的真实分类。
 const categoryOptions = computed(() => props.categories.filter(category => category !== '全部'))
 const filteredCategories = computed(() => {
   const keyword = form.category.trim().toLowerCase()
   return categoryOptions.value.filter(category => !keyword || category.toLowerCase().includes(keyword))
 })
 
+// 每次打开弹窗都从传入站点重新回填，避免上次编辑残留到新建表单。
 watch(() => [props.open, props.site] as const, () => {
   if (!props.open) return
   form.name = props.site?.name || ''
@@ -53,6 +56,7 @@ watch(() => [props.open, props.site] as const, () => {
   categoryMenuOpen.value = false
 }, { immediate: true })
 
+// sort 从输入框回来可能是字符串，提交前转成后端期望的数字。
 function submit() {
   emit('save', { ...form, sort: Number(form.sort || 0) }, props.site?.id)
 }
@@ -65,6 +69,7 @@ function submit() {
         <TextField v-model="form.name" label="名称" required />
         <div class="relative grid gap-2 text-sm text-[var(--page-muted)]">
           <span>分类</span>
+          <!-- 分类既支持选择已有项，也允许直接输入新分类。 -->
           <div class="flex overflow-hidden rounded-lg border border-[var(--border-soft)] bg-[var(--surface-input)] focus-within:border-[var(--focus)] focus-within:ring-4 focus-within:ring-[var(--focus-ring)]">
             <input
               v-model="form.category"
@@ -111,6 +116,7 @@ function submit() {
         <TextField v-model="form.sort" label="排序" type="number" />
         <div class="grid gap-2 sm:col-span-2">
           <span class="text-sm text-[var(--page-muted)]">光效颜色</span>
+          <!-- 光效值直接保存为 CSS 颜色，卡片通过 --glow 变量使用。 -->
           <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <button
               v-for="option in glowOptions"

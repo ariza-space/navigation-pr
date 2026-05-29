@@ -19,6 +19,7 @@ const form = reactive({ username: '', password: '' })
 
 <template>
   <Teleport to="body">
+    <!-- 登录弹窗使用更高层级，保证能覆盖普通对话框和主题切换器。 -->
     <div v-if="open" class="fixed inset-0 z-[60] grid place-items-center bg-[oklch(12%_.035_260_/_0.86)] p-4 backdrop-blur-xl">
       <section class="w-full max-w-md rounded-[24px] border border-[var(--border)] bg-[var(--surface-strong)] p-6 shadow-dialog">
         <h2 class="mb-2 text-2xl font-semibold text-[var(--page-text)]">登录导航站</h2>

@@ -15,6 +15,7 @@ const emit = defineEmits<{
 
 <template>
   <UiDialog :open="open" title="选择图标" @close="emit('close')">
+    <!-- 点击 emoji 后立即更新 v-model 并关闭弹窗，减少一次额外确认。 -->
     <div class="grid max-h-[390px] grid-cols-5 gap-2 overflow-auto sm:grid-cols-10">
       <button
         v-for="icon in emojiOptions"

@@ -11,6 +11,7 @@ const emit = defineEmits<{
 </script>
 
 <template>
+  <!-- 多行输入保持和 TextField 一致的 v-model 事件与主题样式。 -->
   <label class="grid gap-2 text-sm text-[var(--page-muted)]">
     <span>{{ label }}</span>
     <textarea

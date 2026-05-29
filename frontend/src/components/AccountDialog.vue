@@ -19,6 +19,7 @@ const emit = defineEmits<{
 
 const form = reactive({ username: '', currentPassword: '', newPassword: '' })
 
+// 每次打开都重置敏感字段，避免上一次输入的密码留在弹窗里。
 watch(() => props.open, open => {
   if (!open) return
   form.username = props.user?.username || ''
@@ -29,6 +30,7 @@ watch(() => props.open, open => {
 
 <template>
   <UiDialog :open="open" title="修改账号密码" @close="emit('close')">
+    <!-- 新密码允许留空，此时后端只更新账号名。 -->
     <form class="grid gap-4" @submit.prevent="emit('save', { ...form })">
       <TextField v-model="form.username" label="账号" required />
       <TextField v-model="form.currentPassword" label="当前密码" type="password" autocomplete="current-password" required />

@@ -16,11 +16,13 @@ const emit = defineEmits<{
 
 <template>
   <Teleport to="body">
+    <!-- Teleport 到 body，避免父级 overflow 或 z-index 影响弹窗遮罩。 -->
     <div
       v-if="open"
       class="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-[oklch(12%_.035_260_/_0.72)] p-4 backdrop-blur-xl"
       @mousedown.self="emit('close')"
     >
+      <!-- wide 只控制最大宽度，内容布局由调用方自行决定。 -->
       <section
         role="dialog"
         aria-modal="true"

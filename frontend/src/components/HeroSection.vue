@@ -15,6 +15,7 @@ const emit = defineEmits<{
 </script>
 
 <template>
+  <!-- 首页头图区负责搜索入口和概览统计，实际搜索请求在 App.vue 中节流。 -->
   <section class="mb-8 grid items-center gap-6 lg:grid-cols-[1.12fr_.88fr]">
     <div>
       <div class="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-sm text-[var(--accent)] backdrop-blur-xl">

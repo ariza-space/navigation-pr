@@ -16,6 +16,7 @@ const emit = defineEmits<{
 </script>
 
 <template>
+  <!-- 整张卡片是外链，管理按钮用 prevent 避免点击时同时打开站点。 -->
   <a
     :href="site.url"
     target="_blank"

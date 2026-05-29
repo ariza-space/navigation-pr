@@ -6,6 +6,7 @@ import UiButton from '@/components/ui/Button.vue'
 import { useTheme } from '@/composables/useTheme'
 
 const { activeTheme, currentTheme, themeOptions, applyTheme } = useTheme()
+// 主题切换器是悬浮控件，局部 open 状态不需要同步到全局 store。
 const open = ref(false)
 </script>
 
@@ -15,6 +16,7 @@ const open = ref(false)
       v-if="open"
       class="mb-2 grid w-52 gap-1 rounded-[18px] border border-[var(--border)] bg-[var(--surface-strong)] p-2 shadow-card backdrop-blur-xl"
     >
+      <!-- 第二个参数表示用户主动选择，需要持久化到本地偏好。 -->
       <button
         v-for="theme in themeOptions"
         :key="theme.value"

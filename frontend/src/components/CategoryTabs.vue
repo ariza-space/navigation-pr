@@ -10,6 +10,7 @@ const emit = defineEmits<{
 </script>
 
 <template>
+  <!-- 分类切换是纯展示控件，选中状态由父组件的 active 决定。 -->
   <nav class="mb-6 flex flex-wrap gap-2.5">
     <button
       v-for="category in categories"

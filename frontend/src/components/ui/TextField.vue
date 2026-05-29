@@ -16,6 +16,7 @@ const emit = defineEmits<{
 </script>
 
 <template>
+  <!-- 组件保留原生 input 属性透传入口，业务层不用重复写统一样式。 -->
   <label class="grid gap-2 text-sm text-[var(--page-muted)]">
     <span>{{ label }}</span>
     <input

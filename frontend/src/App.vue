@@ -27,6 +27,7 @@ const notes = useNotes()
 const settingsStore = useSettings()
 const { applyDefaultTheme } = useTheme()
 
+// 顶层页面只保存当前视图和弹窗开关，业务数据交给各 composable 维护。
 const activeModule = ref<'sites' | 'notes'>('sites')
 const siteDialogOpen = ref(false)
 const editingSite = ref<Site | null>(null)
@@ -39,6 +40,7 @@ const settingsDialogOpen = ref(false)
 const settingsError = ref('')
 const bootError = ref('')
 
+// 搜索输入变化较频繁，延迟请求可以减少后端和 SQLite 的无效查询。
 const debouncedLoadSites = debounce(async () => {
   try {
     await sites.loadSitesOnly()
@@ -51,6 +53,7 @@ watch(sites.query, () => {
   debouncedLoadSites()
 })
 
+// 笔记接口需要登录态，防止匿名浏览站点时触发受保护接口。
 const debouncedLoadNotes = debounce(async () => {
   if (!auth.user.value) return
   try {
@@ -65,6 +68,7 @@ watch(notes.query, () => {
   debouncedLoadNotes()
 })
 
+// 登录弹窗完成后，如果用户当前停留在文档模块，需要补拉一次文档列表。
 watch(auth.user, async (user) => {
   if (user && activeModule.value === 'notes') {
     await loadNotes()
@@ -72,6 +76,7 @@ watch(auth.user, async (user) => {
 })
 
 async function bootstrap() {
+  // 首屏初始化顺序：会话用于决定管理能力，设置用于主题，站点数据用于首页内容。
   await auth.refreshSession()
   try {
     const settings = await settingsStore.loadSettings()
@@ -83,6 +88,7 @@ async function bootstrap() {
 }
 
 function openSiteDialog(site: Site | null = null) {
+  // 新增和编辑共用一个弹窗，传入 site 时由子组件回填表单。
   if (!auth.requireLogin()) return
   siteError.value = ''
   editingSite.value = site
@@ -90,6 +96,7 @@ function openSiteDialog(site: Site | null = null) {
 }
 
 async function saveSite(input: SiteInput, id?: string) {
+  // 所有写操作都在这里统一处理登录过期，避免子组件直接理解认证细节。
   siteError.value = ''
   try {
     await sites.saveSite(input, id)
@@ -123,6 +130,7 @@ async function openCategoryDialog() {
 }
 
 async function removeCategory(category: CategoryStat) {
+  // 分类删除只清空站点的分类字段，不删除站点本身，所以确认文案要讲清影响范围。
   if (!auth.requireLogin()) return
   const message = `确定删除「${category.name}」分类吗？该分类下的 ${category.count} 个站点会保留，但分类会被清空。`
   if (!window.confirm(message)) return
@@ -175,6 +183,7 @@ async function changeCategory(category: string) {
 }
 
 async function switchModule(module: 'sites' | 'notes') {
+  // 切换到文档模块时立即加载数据，站点模块则依赖已有缓存和分类筛选。
   if (module === 'notes' && !auth.requireLogin()) return
   activeModule.value = module
   if (module === 'notes') {
@@ -210,6 +219,7 @@ async function saveNote() {
 }
 
 async function deleteNote() {
+  // 文档删除是软删除，真实 Markdown 文件保留给用户后续恢复或手工处理。
   if (!notes.selected.value) return
   if (!window.confirm(`确定删除「${notes.selected.value.title}」吗？文件会保留，笔记会被软删除。`)) return
   try {

@@ -14,6 +14,7 @@ const props = withDefaults(defineProps<{
   type: 'button',
 })
 
+// 统一按钮尺寸和语义色，业务组件只需要组合 variant、size 和额外 class。
 const classes = computed(() => cn(
   'inline-flex items-center justify-center gap-2 rounded-lg text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--focus-ring)] disabled:pointer-events-none disabled:opacity-50',
   props.size === 'default' && 'h-10 px-4',
@@ -29,6 +30,7 @@ const classes = computed(() => cn(
 </script>
 
 <template>
+  <!-- 默认 type 是 button，避免在表单中误触发 submit。 -->
   <button :type="type" :class="classes">
     <slot />
   </button>

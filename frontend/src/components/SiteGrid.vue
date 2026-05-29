@@ -14,6 +14,7 @@ const emit = defineEmits<{
 </script>
 
 <template>
+  <!-- 网格只负责空态和卡片排列，单张卡片的访问/管理行为封装在 SiteCard。 -->
   <section class="grid gap-[18px] sm:grid-cols-2 xl:grid-cols-4">
     <div v-if="!sites.length" class="col-span-full grid min-h-[170px] place-items-center rounded-[24px] border border-dashed border-[var(--border)] bg-[var(--surface)] text-[var(--page-soft)]">
       没有找到匹配的站点

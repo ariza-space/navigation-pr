@@ -16,6 +16,7 @@ const emit = defineEmits<{
   logout: []
 }>()
 
+// 菜单展开只属于这个入口自身，登录态变化由父组件通过 user 传入。
 const open = ref(false)
 
 function clickUser(user: UserSession | null) {
@@ -27,6 +28,7 @@ function clickUser(user: UserSession | null) {
 }
 
 function menu(action: 'account' | 'settings' | 'logout') {
+  // 先收起菜单再派发动作，避免弹窗打开后下拉菜单仍留在页面上。
   open.value = false
   if (action === 'account') emit('account')
   if (action === 'settings') emit('settings')

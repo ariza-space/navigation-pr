@@ -20,6 +20,7 @@ const emit = defineEmits<{
 
 <template>
   <UiDialog :open="open" title="分类管理" @close="emit('close')">
+    <!-- 分类行只展示统计和操作，真正的重命名/删除确认由父组件处理。 -->
     <div class="grid max-h-[420px] gap-2 overflow-auto">
       <div v-if="error" class="rounded-lg border border-[var(--danger-border)] bg-[var(--danger-bg)] px-3 py-2 text-sm text-[var(--danger-text)]">
         {{ error }}

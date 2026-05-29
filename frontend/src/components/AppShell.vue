@@ -10,6 +10,7 @@ defineProps<{
   activeModule: 'sites' | 'notes'
 }>()
 
+// Shell 不持有业务状态，只把导航、账号和设置入口的意图交回 App.vue。
 const emit = defineEmits<{
   login: []
   account: []
@@ -20,6 +21,7 @@ const emit = defineEmits<{
 </script>
 
 <template>
+  <!-- 页面骨架负责统一最大宽度、顶部模块切换和右上角账号入口。 -->
   <main class="relative mx-auto min-h-screen w-[min(1180px,calc(100%-24px))] py-7 sm:w-[min(1180px,calc(100%-40px))] sm:py-14">
     <div class="relative z-10 mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <nav class="flex w-fit rounded-xl border border-[var(--border-soft)] bg-[var(--surface)] p-1">

@@ -22,6 +22,7 @@ const emit = defineEmits<{
 
 const form = reactive<AppSettings>({ siteTitle: '', badge: '', heroTitle: '', subtitle: '', theme: 'dark' })
 
+// 设置可能在后台加载或保存后变化，打开弹窗时以最新服务端值为准。
 watch(() => [props.open, props.settings] as const, () => {
   if (!props.open) return
   Object.assign(form, props.settings)
@@ -30,6 +31,7 @@ watch(() => [props.open, props.settings] as const, () => {
 
 <template>
   <UiDialog :open="open" title="页面设置" @close="emit('close')">
+    <!-- 本地表单提交给父组件保存，成功后再由父组件应用默认主题。 -->
     <form class="grid gap-4" @submit.prevent="emit('save', { ...form })">
       <TextField v-model="form.siteTitle" label="Title" required />
       <TextField v-model="form.badge" label="徽章" required />
