@@ -4,28 +4,58 @@ import (
 	"encoding/json"
 	"errors"
 	"io/fs"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
+	"time"
 
 	"navigation/internal/domain"
 	"navigation/internal/service"
 )
 
+const (
+	loginFailureLimit  = 5
+	loginFailureWindow = time.Minute
+)
+
 // Handler 负责 HTTP 路由、请求解析和响应编码。
 type Handler struct {
-	service *service.SiteService
-	auth    *service.AuthService
-	notes   *service.NoteService
-	static  fs.FS
+	service       *service.SiteService
+	auth          *service.AuthService
+	notes         *service.NoteService
+	static        fs.FS
+	secureCookies bool
+	loginLimiter  *loginLimiter
+}
+
+// HandlerOption 配置 HTTP 处理器行为。
+type HandlerOption func(*Handler)
+
+// WithSecureCookies 控制会话 Cookie 是否仅允许 HTTPS 传输。
+func WithSecureCookies(secure bool) HandlerOption {
+	return func(h *Handler) {
+		h.secureCookies = secure
+	}
 }
 
 // NewHandler 创建 HTTP 处理器。
-func NewHandler(service *service.SiteService, auth *service.AuthService, notes *service.NoteService, static fs.FS) *Handler {
+func NewHandler(service *service.SiteService, auth *service.AuthService, notes *service.NoteService, static fs.FS, options ...HandlerOption) *Handler {
 	if distFS, err := fs.Sub(static, "web/dist"); err == nil {
 		static = distFS
 	}
-	return &Handler{service: service, auth: auth, notes: notes, static: static}
+	handler := &Handler{
+		service:      service,
+		auth:         auth,
+		notes:        notes,
+		static:       static,
+		loginLimiter: newLoginLimiter(loginFailureLimit, loginFailureWindow),
+	}
+	for _, option := range options {
+		option(handler)
+	}
+	return handler
 }
 
 // Routes 注册页面和 API 路由。
@@ -60,14 +90,40 @@ func (h *Handler) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 }
 
 func (h *Handler) ensureAuth(w http.ResponseWriter, r *http.Request) bool {
+	if !h.ensureWriteOrigin(w, r) {
+		return false
+	}
 	cookie, err := r.Cookie("navigation_session")
 	if err != nil || cookie.Value == "" {
 		writeError(w, http.StatusUnauthorized, "请先登录")
 		return false
 	}
 	if _, ok := h.auth.UserBySession(cookie.Value); !ok {
-		clearSessionCookie(w)
+		h.clearSessionCookie(w)
 		writeError(w, http.StatusUnauthorized, "登录已失效")
+		return false
+	}
+	return true
+}
+
+func (h *Handler) ensureWriteOrigin(w http.ResponseWriter, r *http.Request) bool {
+	if !isWriteMethod(r.Method) {
+		return true
+	}
+	origin := strings.TrimSpace(r.Header.Get("Origin"))
+	if origin == "" {
+		origin = strings.TrimSpace(r.Header.Get("Referer"))
+	}
+	if origin == "" {
+		return true
+	}
+	originURL, err := url.Parse(origin)
+	if err != nil || originURL.Scheme == "" || originURL.Host == "" {
+		writeError(w, http.StatusForbidden, "请求来源不正确")
+		return false
+	}
+	if !sameOrigin(r, originURL) {
+		writeError(w, http.StatusForbidden, "请求来源不正确")
 		return false
 	}
 	return true
@@ -86,6 +142,11 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "不支持的请求方法")
 		return
 	}
+	clientKey := loginClientKey(r)
+	if !h.loginLimiter.Allow(clientKey) {
+		writeError(w, http.StatusTooManyRequests, "登录失败次数过多，请稍后再试")
+		return
+	}
 	var input struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
@@ -96,10 +157,12 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	token, user, err := h.auth.Login(input.Username, input.Password)
 	if err != nil {
+		h.loginLimiter.RecordFailure(clientKey)
 		h.writeServiceError(w, err, "账号不存在")
 		return
 	}
-	setSessionCookie(w, token)
+	h.loginLimiter.RecordSuccess(clientKey)
+	h.setSessionCookie(w, token)
 	writeJSON(w, http.StatusOK, map[string]string{"username": user.Username})
 }
 
@@ -115,7 +178,7 @@ func (h *Handler) handleSession(w http.ResponseWriter, r *http.Request) {
 	}
 	user, ok := h.auth.UserBySession(cookie.Value)
 	if !ok {
-		clearSessionCookie(w)
+		h.clearSessionCookie(w)
 		writeError(w, http.StatusUnauthorized, "登录已失效")
 		return
 	}
@@ -130,7 +193,7 @@ func (h *Handler) handleLogout(w http.ResponseWriter, r *http.Request) {
 	if cookie, err := r.Cookie("navigation_session"); err == nil {
 		h.auth.Logout(cookie.Value)
 	}
-	clearSessionCookie(w)
+	h.clearSessionCookie(w)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -148,10 +211,19 @@ func (h *Handler) handleAccount(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "请求数据格式不正确")
 		return
 	}
-	user, err := h.auth.UpdateAccount(input.Username, input.CurrentPassword, input.NewPassword)
+	user, passwordChanged, err := h.auth.UpdateAccount(input.Username, input.CurrentPassword, input.NewPassword)
 	if err != nil {
 		h.writeServiceError(w, err, "账号不存在")
 		return
+	}
+	if passwordChanged {
+		token, _, err := h.auth.Login(user.Username, input.NewPassword)
+		if err != nil {
+			h.clearSessionCookie(w)
+			h.writeServiceError(w, err, "账号不存在")
+			return
+		}
+		h.setSessionCookie(w, token)
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"username": user.Username})
 }
@@ -468,24 +540,102 @@ func (h *Handler) writeNoteServiceError(w http.ResponseWriter, err error, notFou
 	writeError(w, http.StatusInternalServerError, "保存笔记数据失败")
 }
 
-func setSessionCookie(w http.ResponseWriter, token string) {
+func (h *Handler) setSessionCookie(w http.ResponseWriter, token string) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     "navigation_session",
 		Value:    token,
 		Path:     "/",
 		MaxAge:   86400,
 		HttpOnly: true,
+		Secure:   h.secureCookies,
 		SameSite: http.SameSiteLaxMode,
 	})
 }
 
-func clearSessionCookie(w http.ResponseWriter) {
+func (h *Handler) clearSessionCookie(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     "navigation_session",
 		Value:    "",
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
+		Secure:   h.secureCookies,
 		SameSite: http.SameSiteLaxMode,
 	})
+}
+
+func isWriteMethod(method string) bool {
+	return method == http.MethodPost || method == http.MethodPut || method == http.MethodPatch || method == http.MethodDelete
+}
+
+func sameOrigin(r *http.Request, origin *url.URL) bool {
+	expectedScheme := requestScheme(r)
+	return strings.EqualFold(origin.Scheme, expectedScheme) && strings.EqualFold(origin.Host, r.Host)
+}
+
+func requestScheme(r *http.Request) string {
+	if proto := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")); proto != "" {
+		return strings.ToLower(strings.TrimSpace(strings.Split(proto, ",")[0]))
+	}
+	if r.TLS != nil {
+		return "https"
+	}
+	return "http"
+}
+
+func loginClientKey(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err == nil && host != "" {
+		return host
+	}
+	if r.RemoteAddr != "" {
+		return r.RemoteAddr
+	}
+	return "unknown"
+}
+
+type loginLimiter struct {
+	mu       sync.Mutex
+	limit    int
+	window   time.Duration
+	failures map[string][]time.Time
+}
+
+func newLoginLimiter(limit int, window time.Duration) *loginLimiter {
+	return &loginLimiter{limit: limit, window: window, failures: map[string][]time.Time{}}
+}
+
+func (l *loginLimiter) Allow(key string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.pruneLocked(key, time.Now())
+	return len(l.failures[key]) < l.limit
+}
+
+func (l *loginLimiter) RecordFailure(key string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	now := time.Now()
+	l.pruneLocked(key, now)
+	l.failures[key] = append(l.failures[key], now)
+}
+
+func (l *loginLimiter) RecordSuccess(key string) {
+	l.mu.Lock()
+	delete(l.failures, key)
+	l.mu.Unlock()
+}
+
+func (l *loginLimiter) pruneLocked(key string, now time.Time) {
+	cutoff := now.Add(-l.window)
+	failures := l.failures[key]
+	keepFrom := 0
+	for keepFrom < len(failures) && failures[keepFrom].Before(cutoff) {
+		keepFrom++
+	}
+	if keepFrom >= len(failures) {
+		delete(l.failures, key)
+		return
+	}
+	l.failures[key] = failures[keepFrom:]
 }

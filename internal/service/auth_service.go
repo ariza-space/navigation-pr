@@ -18,7 +18,6 @@ import (
 
 const (
 	DefaultUsername = "admin"
-	DefaultPassword = "admin"
 
 	defaultSiteTitle = "导航站"
 	defaultBadge     = "DEV PORTAL / 个人导航站"
@@ -38,14 +37,21 @@ type AccountStore interface {
 
 // AuthService 封装单用户鉴权、会话和显示设置。
 type AuthService struct {
-	mu       sync.Mutex
-	store    AccountStore
-	sessions map[string]session
+	mu                sync.Mutex
+	store             AccountStore
+	sessions          map[string]session
+	initialCredential *InitialCredential
 }
 
 type session struct {
 	Username  string
 	ExpiresAt time.Time
+}
+
+// InitialCredential 是首次初始化或重置账号时生成的一次性登录信息。
+type InitialCredential struct {
+	Username string
+	Password string
 }
 
 // NewAuthService 创建鉴权服务，并确保默认账号存在。
@@ -57,7 +63,7 @@ func NewAuthService(store AccountStore) (*AuthService, error) {
 	return service, nil
 }
 
-// EnsureDefaultUser 在没有账号时初始化 admin/admin。
+// EnsureDefaultUser 在没有账号时初始化随机密码的默认账号。
 func (s *AuthService) EnsureDefaultUser() error {
 	_, err := s.store.GetUser()
 	if err == nil {
@@ -69,16 +75,31 @@ func (s *AuthService) EnsureDefaultUser() error {
 	return s.ResetDefaultUser()
 }
 
-// ResetDefaultUser 重置账号密码为 admin/admin。
+// ResetDefaultUser 重置账号密码为随机初始密码。
 func (s *AuthService) ResetDefaultUser() error {
-	user, err := newUser(DefaultUsername, DefaultPassword)
+	password, err := randomToken(18)
+	if err != nil {
+		return err
+	}
+	user, err := newUser(DefaultUsername, password)
 	if err != nil {
 		return err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.sessions = map[string]session{}
+	s.initialCredential = &InitialCredential{Username: DefaultUsername, Password: password}
 	return s.store.SaveUser(user)
+}
+
+// InitialCredential 返回本次进程启动时生成的一次性初始账号信息。
+func (s *AuthService) InitialCredential() (InitialCredential, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.initialCredential == nil {
+		return InitialCredential{}, false
+	}
+	return *s.initialCredential, true
 }
 
 // Login 校验账号密码并创建会话。
@@ -128,42 +149,47 @@ func (s *AuthService) UserBySession(token string) (domain.User, bool) {
 }
 
 // UpdateAccount 修改账号和密码，密码为空时保留旧密码。
-func (s *AuthService) UpdateAccount(username, currentPassword, newPassword string) (domain.User, error) {
+func (s *AuthService) UpdateAccount(username, currentPassword, newPassword string) (domain.User, bool, error) {
 	username = strings.TrimSpace(username)
 	if username == "" {
-		return domain.User{}, ValidationError{Message: "账号不能为空"}
+		return domain.User{}, false, ValidationError{Message: "账号不能为空"}
 	}
 	if currentPassword == "" {
-		return domain.User{}, ValidationError{Message: "当前密码不能为空"}
+		return domain.User{}, false, ValidationError{Message: "当前密码不能为空"}
 	}
 
 	user, err := s.store.GetUser()
 	if err != nil {
-		return domain.User{}, StoreError{Op: StoreOpRead, Err: err}
+		return domain.User{}, false, StoreError{Op: StoreOpRead, Err: err}
 	}
 	if !verifyPassword(currentPassword, user.PasswordSalt, user.PasswordHash) {
-		return domain.User{}, ValidationError{Message: "当前密码不正确"}
+		return domain.User{}, false, ValidationError{Message: "当前密码不正确"}
 	}
 
 	user.Username = username
-	if strings.TrimSpace(newPassword) != "" {
+	passwordChanged := strings.TrimSpace(newPassword) != ""
+	if passwordChanged {
 		updated, err := newUser(username, newPassword)
 		if err != nil {
-			return domain.User{}, err
+			return domain.User{}, false, err
 		}
 		user = updated
 	}
 	if err := s.store.SaveUser(user); err != nil {
-		return domain.User{}, StoreError{Op: StoreOpSave, Err: err}
+		return domain.User{}, false, StoreError{Op: StoreOpSave, Err: err}
 	}
 
 	s.mu.Lock()
-	for token, current := range s.sessions {
-		current.Username = user.Username
-		s.sessions[token] = current
+	if passwordChanged {
+		s.sessions = map[string]session{}
+	} else {
+		for token, current := range s.sessions {
+			current.Username = user.Username
+			s.sessions[token] = current
+		}
 	}
 	s.mu.Unlock()
-	return user, nil
+	return user, passwordChanged, nil
 }
 
 // Settings 返回显示设置，自动补齐默认值。

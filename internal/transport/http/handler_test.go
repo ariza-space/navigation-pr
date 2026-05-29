@@ -212,7 +212,11 @@ func TestAuthenticatedNoteSync(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewAuthService() error = %v", err)
 	}
-	token, _, err := auth.Login(service.DefaultUsername, service.DefaultPassword)
+	credential, ok := auth.InitialCredential()
+	if !ok {
+		t.Fatal("InitialCredential() missing")
+	}
+	token, _, err := auth.Login(credential.Username, credential.Password)
 	if err != nil {
 		t.Fatalf("Login() error = %v", err)
 	}
@@ -244,7 +248,11 @@ func TestAuthenticatedNoteLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewAuthService() error = %v", err)
 	}
-	token, _, err := auth.Login(service.DefaultUsername, service.DefaultPassword)
+	credential, ok := auth.InitialCredential()
+	if !ok {
+		t.Fatal("InitialCredential() missing")
+	}
+	token, _, err := auth.Login(credential.Username, credential.Password)
 	if err != nil {
 		t.Fatalf("Login() error = %v", err)
 	}
@@ -280,21 +288,113 @@ func TestAuthenticatedNoteLifecycle(t *testing.T) {
 }
 
 func TestCreateInvalidNoteReturnsBadRequest(t *testing.T) {
-	handler := newTestHandler(t)
-	req := httptest.NewRequest(http.MethodPost, "/api/login", bytes.NewBufferString(`{"username":"admin","password":"admin"}`))
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("login status = %d, want %d", rec.Code, http.StatusOK)
+	store := &testStore{
+		sites:    []domain.Site{{ID: "site-1", Name: "Go", URL: "https://go.dev", Category: "Dev", Sort: 1}},
+		contents: map[string]string{},
 	}
+	auth, err := service.NewAuthService(store)
+	if err != nil {
+		t.Fatalf("NewAuthService() error = %v", err)
+	}
+	credential, ok := auth.InitialCredential()
+	if !ok {
+		t.Fatal("InitialCredential() missing")
+	}
+	token, _, err := auth.Login(credential.Username, credential.Password)
+	if err != nil {
+		t.Fatalf("Login() error = %v", err)
+	}
+	static := fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte("index")}}
+	handler := NewHandler(service.NewSiteService(store), auth, service.NewNoteService(store, store), static).Routes()
 
-	req = httptest.NewRequest(http.MethodPost, "/api/notes", bytes.NewBufferString(`{"content":"正文"}`))
-	for _, cookie := range rec.Result().Cookies() {
-		req.AddCookie(cookie)
-	}
-	rec = httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/notes", bytes.NewBufferString(`{"content":"正文"}`))
+	req.AddCookie(&http.Cookie{Name: "navigation_session", Value: token})
+	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestLoginRateLimit(t *testing.T) {
+	handler := newTestHandler(t)
+	for i := 0; i < loginFailureLimit; i++ {
+		req := httptest.NewRequest(http.MethodPost, "/api/login", bytes.NewBufferString(`{"username":"admin","password":"wrong"}`))
+		req.RemoteAddr = "192.0.2.10:12345"
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("attempt %d status = %d, want %d", i+1, rec.Code, http.StatusBadRequest)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/login", bytes.NewBufferString(`{"username":"admin","password":"wrong"}`))
+	req.RemoteAddr = "192.0.2.10:12345"
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusTooManyRequests)
+	}
+}
+
+func TestWriteOriginMustMatchRequestOrigin(t *testing.T) {
+	store := &testStore{
+		sites:    []domain.Site{{ID: "site-1", Name: "Go", URL: "https://go.dev", Category: "Dev", Sort: 1}},
+		contents: map[string]string{},
+	}
+	auth, err := service.NewAuthService(store)
+	if err != nil {
+		t.Fatalf("NewAuthService() error = %v", err)
+	}
+	credential, ok := auth.InitialCredential()
+	if !ok {
+		t.Fatal("InitialCredential() missing")
+	}
+	token, _, err := auth.Login(credential.Username, credential.Password)
+	if err != nil {
+		t.Fatalf("Login() error = %v", err)
+	}
+	static := fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte("index")}}
+	handler := NewHandler(service.NewSiteService(store), auth, service.NewNoteService(store, store), static).Routes()
+
+	req := httptest.NewRequest(http.MethodPost, "http://navigation.local/api/notes", bytes.NewBufferString(`{"title":"x","content":"x"}`))
+	req.Header.Set("Origin", "http://evil.example")
+	req.AddCookie(&http.Cookie{Name: "navigation_session", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusForbidden)
+	}
+}
+
+func TestSecureCookieOption(t *testing.T) {
+	store := &testStore{
+		sites: []domain.Site{{ID: "site-1", Name: "Go", URL: "https://go.dev", Category: "Dev", Sort: 1}},
+	}
+	auth, err := service.NewAuthService(store)
+	if err != nil {
+		t.Fatalf("NewAuthService() error = %v", err)
+	}
+	credential, ok := auth.InitialCredential()
+	if !ok {
+		t.Fatal("InitialCredential() missing")
+	}
+	static := fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte("index")}}
+	handler := NewHandler(service.NewSiteService(store), auth, service.NewNoteService(store, store), static, WithSecureCookies(true)).Routes()
+
+	body := `{"username":"` + credential.Username + `","password":"` + credential.Password + `"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/login", bytes.NewBufferString(body))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("login status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	cookies := rec.Result().Cookies()
+	if len(cookies) == 0 {
+		t.Fatal("login did not set a cookie")
+	}
+	if !cookies[0].Secure {
+		t.Fatal("session cookie Secure flag is false")
 	}
 }

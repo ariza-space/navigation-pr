@@ -4,7 +4,7 @@
 
 ## 功能
 
-- 单用户登录保护，默认账号密码为 `admin/admin`。
+- 单用户登录保护，首次启动生成随机初始密码。
 - 管理导航站点：新增、编辑、删除、搜索。
 - 按分类浏览站点，并支持删除分类。
 - 提供站点数量、分类数量、分类统计等接口。
@@ -68,7 +68,7 @@ go run . -port 8080 -data data
 ```text
 http://localhost:8080
 ```
-默认账号密码：`admin/admin`。
+首次启动会自动生成随机初始密码，并打印到服务日志中。请登录后立即修改初始密码。
 
 重置账号密码：
 
@@ -76,13 +76,14 @@ http://localhost:8080
 bin/navigation -data data -reset-auth
 ```
 
-`-reset-auth` 会把账号密码重置为 `admin/admin`，然后立即退出，不启动 HTTP 服务。
+`-reset-auth` 会把账号密码重置为随机密码并打印到日志中，然后立即退出，不启动 HTTP 服务。
 
 参数说明：
 
 - `-port`：HTTP 服务端口，默认 `8080`。
 - `-data`：数据目录，默认 `data`。SQLite 数据库会写入 `${data}/sites.db`。
-- `-reset-auth`：重置账号密码为 `admin/admin` 后退出。
+- `-reset-auth`：重置账号密码为随机密码后退出。
+- `-secure-cookie`：把登录 Cookie 标记为 `Secure`，用于 HTTPS 生产部署。
 
 注意：项目使用 `go-sqlite3`，需要启用 CGO。本地环境必须有可用的 C 编译工具链。
 

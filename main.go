@@ -38,10 +38,16 @@ func main() {
 		if err := authSvc.ResetDefaultUser(); err != nil {
 			log.Fatalf("重置账号失败: %v", err)
 		}
-		log.Printf("账号密码已重置为: %s/%s", service.DefaultUsername, service.DefaultPassword)
+		if credential, ok := authSvc.InitialCredential(); ok {
+			log.Printf("账号密码已重置为: %s/%s", credential.Username, credential.Password)
+		}
 		return
 	}
-	handler := httptransport.NewHandler(svc, authSvc, noteSvc, staticFiles)
+	if credential, ok := authSvc.InitialCredential(); ok {
+		log.Printf("首次启动已生成初始账号密码: %s/%s", credential.Username, credential.Password)
+		log.Print("请登录后立即修改初始密码")
+	}
+	handler := httptransport.NewHandler(svc, authSvc, noteSvc, staticFiles, httptransport.WithSecureCookies(cfg.SecureCookie))
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
 	log.Printf("导航站已启动: http://localhost%s", addr)
