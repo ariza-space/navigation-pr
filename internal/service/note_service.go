@@ -27,7 +27,7 @@ const (
 
 // NoteMetaStore 定义笔记元数据持久化能力。
 type NoteMetaStore interface {
-	ListNotes(status, query string) ([]domain.Note, error)
+	ListNotes(status, query string, includePrivate bool) ([]domain.Note, error)
 	GetNote(id string) (domain.Note, error)
 	CreateNote(domain.Note) error
 	UpdateNote(domain.Note) error
@@ -57,7 +57,7 @@ func NewNoteService(meta NoteMetaStore, content NoteContentStore) *NoteService {
 }
 
 // ListNotes 返回笔记列表，不读取 Markdown 全文。
-func (s *NoteService) ListNotes(status, query string) ([]domain.Note, error) {
+func (s *NoteService) ListNotes(status, query string, includePrivate bool) ([]domain.Note, error) {
 	status = strings.TrimSpace(status)
 	if status == "" {
 		status = domain.NoteStatusActive
@@ -65,7 +65,10 @@ func (s *NoteService) ListNotes(status, query string) ([]domain.Note, error) {
 	if !validNoteListStatus(status) {
 		return nil, ValidationError{Message: "笔记状态不正确"}
 	}
-	notes, err := s.meta.ListNotes(status, strings.TrimSpace(query))
+	if !includePrivate && status != domain.NoteStatusActive {
+		return []domain.Note{}, nil
+	}
+	notes, err := s.meta.ListNotes(status, strings.TrimSpace(query), includePrivate)
 	if err != nil {
 		return nil, StoreError{Op: StoreOpRead, Err: err}
 	}
@@ -73,13 +76,16 @@ func (s *NoteService) ListNotes(status, query string) ([]domain.Note, error) {
 }
 
 // GetNote 返回笔记元数据和 Markdown 正文。
-func (s *NoteService) GetNote(id string) (domain.NoteContent, error) {
+func (s *NoteService) GetNote(id string, includePrivate bool) (domain.NoteContent, error) {
 	note, err := s.meta.GetNote(strings.TrimSpace(id))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return domain.NoteContent{}, ErrNotFound
 		}
 		return domain.NoteContent{}, StoreError{Op: StoreOpRead, Err: err}
+	}
+	if note.Status == domain.NoteStatusDeleted || (!includePrivate && (note.Status != domain.NoteStatusActive || note.Visibility != domain.NoteVisibilityPublic)) {
+		return domain.NoteContent{}, ErrNotFound
 	}
 	content, err := s.content.Read(note.FilePath)
 	if err != nil {
@@ -102,6 +108,9 @@ func (s *NoteService) CreateNote(input domain.NoteContent) (domain.NoteContent, 
 	input.FilePath = s.content.NewRelativePath(input.ID, nowTime)
 	if input.Status == "" {
 		input.Status = domain.NoteStatusActive
+	}
+	if input.Visibility == "" {
+		input.Visibility = domain.NoteVisibilityPrivate
 	}
 	normalizeNoteContent(&input)
 	if err := validateNoteContent(input); err != nil {
@@ -140,6 +149,12 @@ func (s *NoteService) UpdateNote(id string, input domain.NoteContent) (domain.No
 	input.UpdatedAt = time.Now().Format(time.RFC3339)
 	if input.Status == "" {
 		input.Status = existing.Status
+	}
+	if input.Visibility == "" {
+		input.Visibility = existing.Visibility
+	}
+	if input.Visibility == "" {
+		input.Visibility = domain.NoteVisibilityPrivate
 	}
 	normalizeNoteContent(&input)
 	if err := validateNoteContent(input); err != nil {
@@ -198,12 +213,13 @@ func (s *NoteService) SyncNoteIndex() (domain.NoteSyncResult, error) {
 		}
 		note := domain.NoteContent{
 			Note: domain.Note{
-				ID:        noteIDFromPath(file.FilePath, usedIDs),
-				FilePath:  file.FilePath,
-				Status:    domain.NoteStatusActive,
-				CreatedAt: file.UpdatedAt,
-				UpdatedAt: file.UpdatedAt,
-				Tags:      []string{},
+				ID:         noteIDFromPath(file.FilePath, usedIDs),
+				FilePath:   file.FilePath,
+				Status:     domain.NoteStatusActive,
+				Visibility: domain.NoteVisibilityPrivate,
+				CreatedAt:  file.UpdatedAt,
+				UpdatedAt:  file.UpdatedAt,
+				Tags:       []string{},
 			},
 			Content: file.Content,
 		}
@@ -227,6 +243,7 @@ func (s *NoteService) SyncNoteIndex() (domain.NoteSyncResult, error) {
 func normalizeNoteContent(input *domain.NoteContent) {
 	input.Title = strings.TrimSpace(input.Title)
 	input.Status = strings.TrimSpace(input.Status)
+	input.Visibility = strings.TrimSpace(input.Visibility)
 	input.Tags = normalizeTags(input.Tags)
 	if input.Title == "" {
 		input.Title = titleFromMarkdown(input.Content)
@@ -247,6 +264,9 @@ func validateNoteContent(input domain.NoteContent) error {
 	if !validNoteWriteStatus(input.Status) {
 		return ValidationError{Message: "笔记状态不正确"}
 	}
+	if !validNoteVisibility(input.Visibility) {
+		return ValidationError{Message: "笔记权限范围不正确"}
+	}
 	return nil
 }
 
@@ -256,6 +276,10 @@ func validNoteWriteStatus(status string) bool {
 
 func validNoteListStatus(status string) bool {
 	return validNoteWriteStatus(status) || status == domain.NoteStatusDeleted
+}
+
+func validNoteVisibility(visibility string) bool {
+	return visibility == domain.NoteVisibilityPrivate || visibility == domain.NoteVisibilityPublic
 }
 
 func normalizeTags(tags []string) []string {

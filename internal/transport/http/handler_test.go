@@ -55,10 +55,13 @@ func (s *testStore) SaveSettings(settings domain.AppSettings) error {
 	return nil
 }
 
-func (s *testStore) ListNotes(status, query string) ([]domain.Note, error) {
+func (s *testStore) ListNotes(status, query string, includePrivate bool) ([]domain.Note, error) {
 	notes := []domain.Note{}
 	for _, note := range s.notes {
 		if status != "" && note.Status != status {
+			continue
+		}
+		if !includePrivate && note.Visibility != domain.NoteVisibilityPublic {
 			continue
 		}
 		notes = append(notes, note)
@@ -171,6 +174,67 @@ func TestAnonymousReadEndpoints(t *testing.T) {
 	}
 }
 
+func TestAnonymousCanReadOnlyPublicNotes(t *testing.T) {
+	store := &testStore{
+		sites: []domain.Site{{ID: "site-1", Name: "Go", URL: "https://go.dev", Category: "Dev", Sort: 1}},
+		notes: []domain.Note{
+			{
+				ID:         "public",
+				Title:      "公开文档",
+				FilePath:   "notes/2026/05/public.md",
+				Status:     domain.NoteStatusActive,
+				Visibility: domain.NoteVisibilityPublic,
+				CreatedAt:  "2026-05-28T00:00:00Z",
+				UpdatedAt:  "2026-05-28T00:00:00Z",
+			},
+			{
+				ID:         "private",
+				Title:      "隐私文档",
+				FilePath:   "notes/2026/05/private.md",
+				Status:     domain.NoteStatusActive,
+				Visibility: domain.NoteVisibilityPrivate,
+				CreatedAt:  "2026-05-28T00:00:00Z",
+				UpdatedAt:  "2026-05-28T00:00:00Z",
+			},
+		},
+		contents: map[string]string{
+			"notes/2026/05/public.md":  "公开正文",
+			"notes/2026/05/private.md": "隐私正文",
+		},
+	}
+	auth, err := service.NewAuthService(store)
+	if err != nil {
+		t.Fatalf("NewAuthService() error = %v", err)
+	}
+	static := fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte("index")}}
+	handler := NewHandler(service.NewSiteService(store), auth, service.NewNoteService(store, store), static).Routes()
+
+	listRec := httptest.NewRecorder()
+	handler.ServeHTTP(listRec, httptest.NewRequest(http.MethodGet, "/api/notes", nil))
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("list status = %d, want %d", listRec.Code, http.StatusOK)
+	}
+	var notes []domain.Note
+	if err := json.NewDecoder(listRec.Body).Decode(&notes); err != nil {
+		t.Fatalf("decode notes: %v", err)
+	}
+	if len(notes) != 1 || notes[0].ID != "public" {
+		t.Fatalf("notes = %#v, want only public note", notes)
+	}
+
+	publicRec := httptest.NewRecorder()
+	handler.ServeHTTP(publicRec, httptest.NewRequest(http.MethodGet, "/api/notes/public", nil))
+	if publicRec.Code != http.StatusOK {
+		t.Fatalf("public status = %d, want %d", publicRec.Code, http.StatusOK)
+	}
+
+	privateRec := httptest.NewRecorder()
+	handler.ServeHTTP(privateRec, httptest.NewRequest(http.MethodGet, "/api/notes/private", nil))
+	if privateRec.Code != http.StatusNotFound {
+		t.Fatalf("private status = %d, want %d", privateRec.Code, http.StatusNotFound)
+	}
+}
+
 func TestAnonymousWriteEndpointsRequireLogin(t *testing.T) {
 	handler := newTestHandler(t)
 	requests := []struct {
@@ -184,10 +248,8 @@ func TestAnonymousWriteEndpointsRequireLogin(t *testing.T) {
 		{method: http.MethodPut, path: "/api/categories/Dev", body: `{"name":"Docs"}`},
 		{method: http.MethodDelete, path: "/api/categories/Dev"},
 		{method: http.MethodPut, path: "/api/settings", body: `{}`},
-		{method: http.MethodGet, path: "/api/notes"},
 		{method: http.MethodPost, path: "/api/notes", body: `{}`},
 		{method: http.MethodPost, path: "/api/notes/sync"},
-		{method: http.MethodGet, path: "/api/notes/note-1"},
 		{method: http.MethodPut, path: "/api/notes/note-1", body: `{}`},
 		{method: http.MethodDelete, path: "/api/notes/note-1"},
 	}

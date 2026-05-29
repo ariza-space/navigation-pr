@@ -68,9 +68,9 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("/api/settings", h.handleSettings)
 	mux.HandleFunc("/api/sites", h.handleSites)
 	mux.HandleFunc("/api/sites/", h.requireAuth(h.handleSiteByID))
-	mux.HandleFunc("/api/notes", h.requireAuth(h.handleNotes))
+	mux.HandleFunc("/api/notes", h.handleNotes)
 	mux.HandleFunc("/api/notes/sync", h.requireAuth(h.handleNoteSync))
-	mux.HandleFunc("/api/notes/", h.requireAuth(h.handleNoteByID))
+	mux.HandleFunc("/api/notes/", h.handleNoteByID)
 	mux.HandleFunc("/api/categories", h.handleCategories)
 	mux.HandleFunc("/api/categories/", h.requireAuth(h.handleCategoryByName))
 	mux.HandleFunc("/api/category-stats", h.handleCategoryStats)
@@ -104,6 +104,15 @@ func (h *Handler) ensureAuth(w http.ResponseWriter, r *http.Request) bool {
 		return false
 	}
 	return true
+}
+
+func (h *Handler) authenticated(r *http.Request) bool {
+	cookie, err := r.Cookie("navigation_session")
+	if err != nil || cookie.Value == "" {
+		return false
+	}
+	_, ok := h.auth.UserBySession(cookie.Value)
+	return ok
 }
 
 func (h *Handler) ensureWriteOrigin(w http.ResponseWriter, r *http.Request) bool {
@@ -339,13 +348,16 @@ func (h *Handler) deleteSite(w http.ResponseWriter, id string) {
 func (h *Handler) handleNotes(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		notes, err := h.notes.ListNotes(r.URL.Query().Get("status"), r.URL.Query().Get("q"))
+		notes, err := h.notes.ListNotes(r.URL.Query().Get("status"), r.URL.Query().Get("q"), h.authenticated(r))
 		if err != nil {
 			h.writeNoteServiceError(w, err, "没有找到这篇笔记")
 			return
 		}
 		writeJSON(w, http.StatusOK, notes)
 	case http.MethodPost:
+		if !h.ensureAuth(w, r) {
+			return
+		}
 		var input domain.NoteContent
 		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 			writeError(w, http.StatusBadRequest, "请求数据格式不正确")
@@ -371,13 +383,16 @@ func (h *Handler) handleNoteByID(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
-		note, err := h.notes.GetNote(id)
+		note, err := h.notes.GetNote(id, h.authenticated(r))
 		if err != nil {
 			h.writeNoteServiceError(w, err, "没有找到这篇笔记")
 			return
 		}
 		writeJSON(w, http.StatusOK, note)
 	case http.MethodPut:
+		if !h.ensureAuth(w, r) {
+			return
+		}
 		var input domain.NoteContent
 		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 			writeError(w, http.StatusBadRequest, "请求数据格式不正确")
@@ -390,6 +405,9 @@ func (h *Handler) handleNoteByID(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, http.StatusOK, note)
 	case http.MethodDelete:
+		if !h.ensureAuth(w, r) {
+			return
+		}
 		if err := h.notes.DeleteNote(id); err != nil {
 			h.writeNoteServiceError(w, err, "没有找到这篇笔记")
 			return

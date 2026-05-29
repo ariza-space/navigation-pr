@@ -15,6 +15,7 @@ const emptyDraft: NoteInput = {
   content: '',
   tags: [],
   status: 'active',
+  visibility: 'private',
   pinned: false,
 }
 
@@ -54,6 +55,7 @@ export function useNotes() {
         content: detail.content,
         tags: [...detail.tags],
         status: detail.status === 'deleted' ? 'active' : detail.status,
+        visibility: detail.visibility || 'private',
         pinned: detail.pinned,
       }
     } finally {
@@ -74,6 +76,7 @@ export function useNotes() {
         content: saved.content,
         tags: [...saved.tags],
         status: saved.status,
+        visibility: saved.visibility,
         pinned: saved.pinned,
       }
       await loadNotes()

@@ -26,25 +26,26 @@ func newSQLiteNoteTestStore(t *testing.T) *SQLiteSiteStore {
 func TestSQLiteNoteStoreLifecycle(t *testing.T) {
 	store := newSQLiteNoteTestStore(t)
 	note := domain.Note{
-		ID:        "note_1",
-		Title:     "标题",
-		FilePath:  "notes/2026/05/note_1.md",
-		Summary:   "摘要",
-		Tags:      []string{"idea", "work"},
-		Status:    domain.NoteStatusActive,
-		Pinned:    true,
-		CreatedAt: "2026-05-28T00:00:00Z",
-		UpdatedAt: "2026-05-28T00:00:00Z",
+		ID:         "note_1",
+		Title:      "标题",
+		FilePath:   "notes/2026/05/note_1.md",
+		Summary:    "摘要",
+		Tags:       []string{"idea", "work"},
+		Status:     domain.NoteStatusActive,
+		Visibility: domain.NoteVisibilityPublic,
+		Pinned:     true,
+		CreatedAt:  "2026-05-28T00:00:00Z",
+		UpdatedAt:  "2026-05-28T00:00:00Z",
 	}
 	if err := store.CreateNote(note); err != nil {
 		t.Fatalf("CreateNote() error = %v", err)
 	}
 
-	notes, err := store.ListNotes("", "")
+	notes, err := store.ListNotes("", "", true)
 	if err != nil {
 		t.Fatalf("ListNotes() error = %v", err)
 	}
-	if len(notes) != 1 || len(notes[0].Tags) != 2 || !notes[0].Pinned {
+	if len(notes) != 1 || len(notes[0].Tags) != 2 || !notes[0].Pinned || notes[0].Visibility != domain.NoteVisibilityPublic {
 		t.Fatalf("notes = %#v, want created note with tags and pinned", notes)
 	}
 
@@ -65,7 +66,7 @@ func TestSQLiteNoteStoreLifecycle(t *testing.T) {
 	if err := store.SoftDeleteNote("note_1", "2026-05-29T00:00:00Z"); err != nil {
 		t.Fatalf("SoftDeleteNote() error = %v", err)
 	}
-	notes, err = store.ListNotes("", "")
+	notes, err = store.ListNotes("", "", true)
 	if err != nil {
 		t.Fatalf("ListNotes() after delete error = %v", err)
 	}
@@ -90,13 +91,14 @@ func TestSQLiteNoteStoreMissingRows(t *testing.T) {
 func TestSQLiteNoteStoreRebuildNoteIndex(t *testing.T) {
 	store := newSQLiteNoteTestStore(t)
 	if err := store.CreateNote(domain.Note{
-		ID:        "note_1",
-		Title:     "旧标题",
-		FilePath:  "notes/2026/05/note_1.md",
-		Status:    domain.NoteStatusActive,
-		Pinned:    true,
-		CreatedAt: "2026-05-01T00:00:00Z",
-		UpdatedAt: "2026-05-01T00:00:00Z",
+		ID:         "note_1",
+		Title:      "旧标题",
+		FilePath:   "notes/2026/05/note_1.md",
+		Status:     domain.NoteStatusActive,
+		Pinned:     true,
+		Visibility: domain.NoteVisibilityPublic,
+		CreatedAt:  "2026-05-01T00:00:00Z",
+		UpdatedAt:  "2026-05-01T00:00:00Z",
 	}); err != nil {
 		t.Fatalf("CreateNote() error = %v", err)
 	}
@@ -123,14 +125,14 @@ func TestSQLiteNoteStoreRebuildNoteIndex(t *testing.T) {
 		t.Fatalf("RebuildNoteIndex() error = %v", err)
 	}
 
-	notes, err := store.ListNotes("", "")
+	notes, err := store.ListNotes("", "", true)
 	if err != nil {
 		t.Fatalf("ListNotes() error = %v", err)
 	}
 	if len(notes) != 1 {
 		t.Fatalf("notes = %d, want 1", len(notes))
 	}
-	if notes[0].Title != "新标题" || !notes[0].Pinned || notes[0].CreatedAt != "2026-05-01T00:00:00Z" {
+	if notes[0].Title != "新标题" || !notes[0].Pinned || notes[0].Visibility != domain.NoteVisibilityPublic || notes[0].CreatedAt != "2026-05-01T00:00:00Z" {
 		t.Fatalf("note = %#v, want rebuilt note preserving pin and created_at", notes[0])
 	}
 }

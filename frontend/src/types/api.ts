@@ -41,6 +41,7 @@ export interface Note {
   summary: string
   tags: string[]
   status: 'active' | 'archived' | 'deleted'
+  visibility: 'private' | 'public'
   pinned: boolean
   createdAt: string
   updatedAt: string
@@ -69,4 +70,4 @@ export interface AccountInput {
 }
 
 export type SiteInput = Pick<Site, 'name' | 'url' | 'category' | 'icon' | 'description' | 'glow' | 'sort'>
-export type NoteInput = Pick<NoteContent, 'title' | 'content' | 'tags' | 'status' | 'pinned'>
+export type NoteInput = Pick<NoteContent, 'title' | 'content' | 'tags' | 'status' | 'visibility' | 'pinned'>

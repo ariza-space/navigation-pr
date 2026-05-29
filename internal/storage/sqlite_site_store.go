@@ -79,6 +79,7 @@ func (s *SQLiteSiteStore) ensureDatabase() error {
 			summary TEXT NOT NULL DEFAULT '',
 			tags TEXT NOT NULL DEFAULT '[]',
 			status TEXT NOT NULL DEFAULT 'active',
+			visibility TEXT NOT NULL DEFAULT 'private',
 			pinned INTEGER NOT NULL DEFAULT 0,
 			created_at TEXT NOT NULL,
 			updated_at TEXT NOT NULL,
@@ -94,7 +95,42 @@ func (s *SQLiteSiteStore) ensureDatabase() error {
 	}
 
 	s.db = db
+	if err := s.ensureNoteSchema(); err != nil {
+		db.Close()
+		return err
+	}
 	return s.importLegacyJSONIfNeeded()
+}
+
+func (s *SQLiteSiteStore) ensureNoteSchema() error {
+	rows, err := s.db.Query(`PRAGMA table_info(notes)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	hasVisibility := false
+	for rows.Next() {
+		var cid int
+		var name, columnType string
+		var notNull int
+		var defaultValue sql.NullString
+		var pk int
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &pk); err != nil {
+			return err
+		}
+		if name == "visibility" {
+			hasVisibility = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if hasVisibility {
+		return nil
+	}
+	_, err = s.db.Exec(`ALTER TABLE notes ADD COLUMN visibility TEXT NOT NULL DEFAULT 'private'`)
+	return err
 }
 
 // GetUser 读取唯一管理员账号。

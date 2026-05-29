@@ -1,17 +1,18 @@
 <script setup lang="ts">
-import { Eye, FileText, Loader2, Pencil, Pin, Plus, RefreshCw, Save, Search, Trash2 } from 'lucide-vue-next'
+import { Eye, FileText, Globe2, Loader2, Lock, Pencil, Pin, Plus, RefreshCw, Save, Search, Trash2 } from 'lucide-vue-next'
 import { MdEditor, MdPreview } from 'md-editor-v3'
 import 'md-editor-v3/lib/style.css'
 import { computed, ref, watch } from 'vue'
 
 import UiButton from '@/components/ui/Button.vue'
 import { debounce } from '@/lib/utils'
-import type { Note, NoteContent, NoteInput } from '@/types/api'
+import type { Note, NoteContent, NoteInput, UserSession } from '@/types/api'
 
 const props = defineProps<{
   notes: Note[]
   selected: NoteContent | null
   draft: NoteInput
+  user: UserSession | null
   loading: boolean
   saving: boolean
   syncing: boolean
@@ -38,7 +39,9 @@ const debouncedSearch = debounce((value: string) => {
 }, 250)
 
 const activeID = computed(() => props.selected?.id || '')
+const canEdit = computed(() => Boolean(props.user))
 const isPreview = computed(() => Boolean(props.selected) && mode.value === 'preview')
+const displayPreview = computed(() => isPreview.value || !canEdit.value)
 // md-editor-v3 需要 v-model 字符串，这里把 props.draft 的不可变更新包装成双向模型。
 const contentModel = computed({
   get: () => props.draft.content,
@@ -87,6 +90,10 @@ function formatDate(value: string) {
     minute: '2-digit',
   }).format(date)
 }
+
+function visibilityText(visibility: Note['visibility']) {
+  return visibility === 'public' ? '公开' : '隐私'
+}
 </script>
 
 <template>
@@ -99,10 +106,10 @@ function formatDate(value: string) {
           <p class="mt-1 text-sm text-[var(--page-soft)]">基于 Markdown</p>
         </div>
         <div class="flex shrink-0 gap-2">
-          <UiButton title="同步 Markdown 文件索引" type="button" variant="outline" :disabled="syncing" @click="emit('sync')">
+          <UiButton v-if="canEdit" title="同步 Markdown 文件索引" type="button" variant="outline" :disabled="syncing" @click="emit('sync')">
             <RefreshCw class="h-4 w-4" :class="{ 'animate-spin': syncing }" /> 索引同步
           </UiButton>
-          <UiButton title="新建文档" type="button" variant="outline" @click="createNote">
+          <UiButton v-if="canEdit" title="新建文档" type="button" variant="outline" @click="createNote">
             <Plus class="h-4 w-4" /> 新建
           </UiButton>
         </div>
@@ -134,7 +141,14 @@ function formatDate(value: string) {
           </span>
           <span class="line-clamp-2 text-left text-xs leading-5 text-[var(--page-soft)]">{{ note.summary || '暂无摘要' }}</span>
           <span class="flex items-center justify-between gap-3 text-[11px] text-[var(--page-soft)]">
-            <span class="truncate">{{ note.tags.join(' / ') || '未标记' }}</span>
+            <span class="flex min-w-0 items-center gap-2">
+              <span v-if="user" class="inline-flex shrink-0 items-center gap-1 rounded-full border border-[var(--border-soft)] px-2 py-0.5">
+                <Globe2 v-if="note.visibility === 'public'" class="h-3 w-3" />
+                <Lock v-else class="h-3 w-3" />
+                {{ visibilityText(note.visibility) }}
+              </span>
+              <span class="truncate">{{ note.tags.join(' / ') || '未标记' }}</span>
+            </span>
             <span class="shrink-0">{{ formatDate(note.updatedAt) }}</span>
           </span>
         </button>
@@ -153,26 +167,26 @@ function formatDate(value: string) {
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div class="min-w-0">
           <p class="text-xs font-semibold uppercase tracking-[.16em] text-[var(--page-soft)]">
-            {{ selected ? (isPreview ? '预览文档' : '正在编辑') : '新建文档' }}
+            {{ selected ? (displayPreview ? '预览文档' : '正在编辑') : (canEdit ? '新建文档' : '公开文档') }}
           </p>
           <h3 class="mt-1 truncate text-xl font-semibold text-[var(--page-text)]">
             {{ draft.title || '未命名文档' }}
           </h3>
         </div>
         <div class="flex flex-wrap gap-2">
-          <UiButton v-if="selected && isPreview" type="button" variant="outline" @click="mode = 'edit'">
+          <UiButton v-if="canEdit && selected && isPreview" type="button" variant="outline" @click="mode = 'edit'">
             <Pencil class="h-4 w-4" /> 编辑
           </UiButton>
-          <UiButton v-if="selected && !isPreview" type="button" variant="outline" @click="mode = 'preview'">
+          <UiButton v-if="canEdit && selected && !isPreview" type="button" variant="outline" @click="mode = 'preview'">
             <Eye class="h-4 w-4" /> 预览
           </UiButton>
-          <UiButton v-if="!isPreview" type="button" variant="outline" @click="patchDraft({ pinned: !draft.pinned })">
+          <UiButton v-if="canEdit && !displayPreview" type="button" variant="outline" @click="patchDraft({ pinned: !draft.pinned })">
             <Pin class="h-4 w-4" /> {{ draft.pinned ? '取消置顶' : '置顶' }}
           </UiButton>
-          <UiButton v-if="!isPreview" type="submit" :disabled="saving" variant="success">
+          <UiButton v-if="canEdit && !displayPreview" type="submit" :disabled="saving" variant="success">
             <Save class="h-4 w-4" /> {{ saving ? '保存中' : '保存' }}
           </UiButton>
-          <UiButton v-if="selected" type="button" variant="danger" @click="emit('delete')">
+          <UiButton v-if="canEdit && selected" type="button" variant="danger" @click="emit('delete')">
             <Trash2 class="h-4 w-4" /> 删除
           </UiButton>
         </div>
@@ -182,12 +196,17 @@ function formatDate(value: string) {
         {{ error }}
       </div>
 
-      <div v-if="isPreview" class="note-preview-meta">
+      <div v-if="displayPreview" class="note-preview-meta">
         <span v-if="draft.pinned">置顶</span>
+        <span class="inline-flex items-center gap-1">
+          <Globe2 v-if="draft.visibility === 'public'" class="h-3 w-3" />
+          <Lock v-else class="h-3 w-3" />
+          {{ visibilityText(draft.visibility) }}
+        </span>
         <span>{{ draft.tags.join(' / ') || '未标记' }}</span>
       </div>
 
-      <div v-if="!isPreview" class="grid gap-4">
+      <div v-if="canEdit && !displayPreview" class="grid gap-4">
         <label class="grid gap-2 text-sm text-[var(--page-muted)]">
           <span>标题</span>
           <input
@@ -199,22 +218,35 @@ function formatDate(value: string) {
         </label>
       </div>
 
-      <label v-if="!isPreview" class="grid gap-2 text-sm text-[var(--page-muted)]">
-        <span>标签</span>
-        <input
-          :value="tagText"
-          class="h-11 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-input)] px-3 text-[15px] text-[var(--page-text)] outline-none transition placeholder:text-[var(--page-soft)] focus:border-[var(--focus)] focus:ring-4 focus:ring-[var(--focus-ring)]"
-          placeholder="idea, work"
-          @input="updateTags(($event.target as HTMLInputElement).value)"
-        />
-      </label>
+      <div v-if="canEdit && !displayPreview" class="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
+        <label class="grid gap-2 text-sm text-[var(--page-muted)]">
+          <span>标签</span>
+          <input
+            :value="tagText"
+            class="h-11 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-input)] px-3 text-[15px] text-[var(--page-text)] outline-none transition placeholder:text-[var(--page-soft)] focus:border-[var(--focus)] focus:ring-4 focus:ring-[var(--focus-ring)]"
+            placeholder="idea, work"
+            @input="updateTags(($event.target as HTMLInputElement).value)"
+          />
+        </label>
+        <label class="grid gap-2 text-sm text-[var(--page-muted)]">
+          <span>权限范围</span>
+          <select
+            :value="draft.visibility"
+            class="h-11 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-input)] px-3 text-[15px] text-[var(--page-text)] outline-none transition focus:border-[var(--focus)] focus:ring-4 focus:ring-[var(--focus-ring)]"
+            @change="patchDraft({ visibility: ($event.target as HTMLSelectElement).value as NoteInput['visibility'] })"
+          >
+            <option value="private">隐私</option>
+            <option value="public">公开</option>
+          </select>
+        </label>
+      </div>
 
       <!-- 预览和编辑复用同一份 draft，切换模式不会丢失未保存内容。 -->
-      <div class="note-markdown-shell" :class="{ 'note-markdown-preview-shell': isPreview }">
+      <div class="note-markdown-shell" :class="{ 'note-markdown-preview-shell': displayPreview }">
         <MdPreview
-          v-if="isPreview"
+          v-if="displayPreview"
           :editor-id="`note-preview-${selected?.id || 'draft'}`"
-          :model-value="draft.content || '暂无内容'"
+          :model-value="draft.content || (canEdit ? '暂无内容' : '请选择左侧公开文档')"
           preview-theme="github"
           code-theme="github"
         />

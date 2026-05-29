@@ -53,9 +53,7 @@ watch(sites.query, () => {
   debouncedLoadSites()
 })
 
-// 笔记接口需要登录态，防止匿名浏览站点时触发受保护接口。
 const debouncedLoadNotes = debounce(async () => {
-  if (!auth.user.value) return
   try {
     await notes.loadNotes()
   } catch (error) {
@@ -184,7 +182,6 @@ async function changeCategory(category: string) {
 
 async function switchModule(module: 'sites' | 'notes') {
   // 切换到文档模块时立即加载数据，站点模块则依赖已有缓存和分类筛选。
-  if (module === 'notes' && !auth.requireLogin()) return
   activeModule.value = module
   if (module === 'notes') {
     await loadNotes()
@@ -210,6 +207,7 @@ async function selectNote(note: Note) {
 }
 
 async function saveNote() {
+  if (!auth.requireLogin()) return
   try {
     await notes.saveDraft()
   } catch (error) {
@@ -220,6 +218,7 @@ async function saveNote() {
 
 async function deleteNote() {
   // 文档删除是软删除，真实 Markdown 文件保留给用户后续恢复或手工处理。
+  if (!auth.requireLogin()) return
   if (!notes.selected.value) return
   if (!window.confirm(`确定删除「${notes.selected.value.title}」吗？文件会保留，笔记会被软删除。`)) return
   try {
@@ -231,6 +230,7 @@ async function deleteNote() {
 }
 
 async function syncNotes() {
+  if (!auth.requireLogin()) return
   try {
     await notes.syncIndex()
   } catch (error) {
@@ -288,6 +288,7 @@ onMounted(() => {
       :notes="notes.notes.value"
       :selected="notes.selected.value"
       :draft="notes.draft.value"
+      :user="auth.user.value"
       :loading="notes.loading.value"
       :saving="notes.saving.value"
       :syncing="notes.syncing.value"

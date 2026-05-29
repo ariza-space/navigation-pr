@@ -9,7 +9,7 @@ import (
 )
 
 // ListNotes 按状态和关键字读取笔记元数据。
-func (s *SQLiteSiteStore) ListNotes(status, query string) ([]domain.Note, error) {
+func (s *SQLiteSiteStore) ListNotes(status, query string, includePrivate bool) ([]domain.Note, error) {
 	status = strings.TrimSpace(status)
 	if status == "" {
 		status = domain.NoteStatusActive
@@ -17,11 +17,15 @@ func (s *SQLiteSiteStore) ListNotes(status, query string) ([]domain.Note, error)
 	query = strings.TrimSpace(query)
 
 	sqlQuery := `
-		SELECT id, title, file_path, summary, tags, status, pinned, created_at, updated_at, deleted_at
+		SELECT id, title, file_path, summary, tags, status, visibility, pinned, created_at, updated_at, deleted_at
 		FROM notes
 		WHERE status = ?
 	`
 	args := []any{status}
+	if !includePrivate {
+		sqlQuery += " AND visibility = ?"
+		args = append(args, domain.NoteVisibilityPublic)
+	}
 	if query != "" {
 		sqlQuery += " AND (title LIKE ? OR summary LIKE ?)"
 		like := "%" + query + "%"
@@ -49,7 +53,7 @@ func (s *SQLiteSiteStore) ListNotes(status, query string) ([]domain.Note, error)
 // GetNote 读取单条笔记元数据。
 func (s *SQLiteSiteStore) GetNote(id string) (domain.Note, error) {
 	row := s.db.QueryRow(`
-		SELECT id, title, file_path, summary, tags, status, pinned, created_at, updated_at, deleted_at
+		SELECT id, title, file_path, summary, tags, status, visibility, pinned, created_at, updated_at, deleted_at
 		FROM notes
 		WHERE id = ?
 	`, id)
@@ -58,29 +62,35 @@ func (s *SQLiteSiteStore) GetNote(id string) (domain.Note, error) {
 
 // CreateNote 新增笔记元数据。
 func (s *SQLiteSiteStore) CreateNote(note domain.Note) error {
+	if note.Visibility == "" {
+		note.Visibility = domain.NoteVisibilityPrivate
+	}
 	tags, err := json.Marshal(note.Tags)
 	if err != nil {
 		return err
 	}
 	_, err = s.db.Exec(`
 		INSERT INTO notes (
-			id, title, file_path, summary, tags, status, pinned, created_at, updated_at, deleted_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, note.ID, note.Title, note.FilePath, note.Summary, string(tags), note.Status, boolToInt(note.Pinned), note.CreatedAt, note.UpdatedAt, note.DeletedAt)
+			id, title, file_path, summary, tags, status, visibility, pinned, created_at, updated_at, deleted_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, note.ID, note.Title, note.FilePath, note.Summary, string(tags), note.Status, note.Visibility, boolToInt(note.Pinned), note.CreatedAt, note.UpdatedAt, note.DeletedAt)
 	return err
 }
 
 // UpdateNote 更新笔记元数据。
 func (s *SQLiteSiteStore) UpdateNote(note domain.Note) error {
+	if note.Visibility == "" {
+		note.Visibility = domain.NoteVisibilityPrivate
+	}
 	tags, err := json.Marshal(note.Tags)
 	if err != nil {
 		return err
 	}
 	result, err := s.db.Exec(`
 		UPDATE notes
-		SET title = ?, file_path = ?, summary = ?, tags = ?, status = ?, pinned = ?, created_at = ?, updated_at = ?, deleted_at = ?
+		SET title = ?, file_path = ?, summary = ?, tags = ?, status = ?, visibility = ?, pinned = ?, created_at = ?, updated_at = ?, deleted_at = ?
 		WHERE id = ?
-	`, note.Title, note.FilePath, note.Summary, string(tags), note.Status, boolToInt(note.Pinned), note.CreatedAt, note.UpdatedAt, note.DeletedAt, note.ID)
+	`, note.Title, note.FilePath, note.Summary, string(tags), note.Status, note.Visibility, boolToInt(note.Pinned), note.CreatedAt, note.UpdatedAt, note.DeletedAt, note.ID)
 	if err != nil {
 		return err
 	}
@@ -124,7 +134,7 @@ func (s *SQLiteSiteStore) RebuildNoteIndex(notes []domain.Note) error {
 
 	existing := map[string]domain.Note{}
 	rows, err := tx.Query(`
-		SELECT id, title, file_path, summary, tags, status, pinned, created_at, updated_at, deleted_at
+		SELECT id, title, file_path, summary, tags, status, visibility, pinned, created_at, updated_at, deleted_at
 		FROM notes
 	`)
 	if err != nil {
@@ -150,8 +160,8 @@ func (s *SQLiteSiteStore) RebuildNoteIndex(notes []domain.Note) error {
 	}
 	stmt, err := tx.Prepare(`
 		INSERT INTO notes (
-			id, title, file_path, summary, tags, status, pinned, created_at, updated_at, deleted_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			id, title, file_path, summary, tags, status, visibility, pinned, created_at, updated_at, deleted_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return err
@@ -161,6 +171,7 @@ func (s *SQLiteSiteStore) RebuildNoteIndex(notes []domain.Note) error {
 	for _, note := range notes {
 		if old, ok := existing[note.ID]; ok {
 			note.Pinned = old.Pinned
+			note.Visibility = old.Visibility
 			if old.CreatedAt != "" {
 				note.CreatedAt = old.CreatedAt
 			}
@@ -169,7 +180,10 @@ func (s *SQLiteSiteStore) RebuildNoteIndex(notes []domain.Note) error {
 		if err != nil {
 			return err
 		}
-		if _, err := stmt.Exec(note.ID, note.Title, note.FilePath, note.Summary, string(tags), note.Status, boolToInt(note.Pinned), note.CreatedAt, note.UpdatedAt, note.DeletedAt); err != nil {
+		if note.Visibility == "" {
+			note.Visibility = domain.NoteVisibilityPrivate
+		}
+		if _, err := stmt.Exec(note.ID, note.Title, note.FilePath, note.Summary, string(tags), note.Status, note.Visibility, boolToInt(note.Pinned), note.CreatedAt, note.UpdatedAt, note.DeletedAt); err != nil {
 			return err
 		}
 	}
@@ -191,6 +205,7 @@ func scanNote(scanner noteScanner) (domain.Note, error) {
 		&note.Summary,
 		&tags,
 		&note.Status,
+		&note.Visibility,
 		&pinned,
 		&note.CreatedAt,
 		&note.UpdatedAt,
@@ -203,6 +218,9 @@ func scanNote(scanner noteScanner) (domain.Note, error) {
 	}
 	if err := json.Unmarshal([]byte(tags), &note.Tags); err != nil {
 		return domain.Note{}, err
+	}
+	if note.Visibility == "" {
+		note.Visibility = domain.NoteVisibilityPrivate
 	}
 	note.Pinned = pinned != 0
 	return note, nil

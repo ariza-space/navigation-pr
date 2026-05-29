@@ -14,10 +14,13 @@ type memoryNoteStore struct {
 	files map[string]string
 }
 
-func (s *memoryNoteStore) ListNotes(status, query string) ([]domain.Note, error) {
+func (s *memoryNoteStore) ListNotes(status, query string, includePrivate bool) ([]domain.Note, error) {
 	notes := []domain.Note{}
 	for _, note := range s.notes {
 		if status == "" || note.Status == status {
+			if !includePrivate && note.Visibility != domain.NoteVisibilityPublic {
+				continue
+			}
 			notes = append(notes, note)
 		}
 	}
@@ -118,6 +121,9 @@ func TestCreateNoteCompletesMetadataAndSummary(t *testing.T) {
 	if note.Status != domain.NoteStatusActive {
 		t.Fatalf("status = %q, want active", note.Status)
 	}
+	if note.Visibility != domain.NoteVisibilityPrivate {
+		t.Fatalf("visibility = %q, want private", note.Visibility)
+	}
 	if note.Summary == "" {
 		t.Fatal("summary was not generated")
 	}
@@ -147,8 +153,26 @@ func TestGetMissingNoteReturnsNotFound(t *testing.T) {
 	store := &memoryNoteStore{}
 	service := NewNoteService(store, store)
 
-	_, err := service.GetNote("missing")
+	_, err := service.GetNote("missing", true)
 	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("GetNote() error = %v, want ErrNotFound", err)
+	}
+}
+
+func TestAnonymousGetPrivateNoteReturnsNotFound(t *testing.T) {
+	store := &memoryNoteStore{
+		notes: []domain.Note{{
+			ID:         "note_1",
+			Title:      "私密",
+			FilePath:   "notes/2026/05/note_1.md",
+			Status:     domain.NoteStatusActive,
+			Visibility: domain.NoteVisibilityPrivate,
+		}},
+		files: map[string]string{"notes/2026/05/note_1.md": "私密内容"},
+	}
+	service := NewNoteService(store, store)
+
+	if _, err := service.GetNote("note_1", false); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("GetNote() error = %v, want ErrNotFound", err)
 	}
 }
